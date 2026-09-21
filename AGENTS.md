@@ -1,4 +1,4 @@
-# AGENTS.md for MapToPoster Vacation Poster Project
+# AGENTS.md for worldcities — Map Poster Engine
 
 This Markdown file contains a complete starter `AGENTS.md` for a personal variation of [`originalankur/maptoposter`](https://github.com/originalankur/maptoposter.git), focused on generating map posters for vacation locations visited by Rob and Lucie.
 
@@ -394,7 +394,7 @@ Bias toward:
 A practical structure for this personal project:
 
 ```text
-maptoposter-vacations/
+worldcities/
   AGENTS.md
   README.md
   create_map_poster.py

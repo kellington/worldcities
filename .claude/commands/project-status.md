@@ -1,8 +1,8 @@
 ---
-description: Generate a dated HTML status page (project/status/status-YYYY-MM-DD.html) summarising maptoposter — what it does, how to run it, available themes, and the AGENTS.md automation vision vs. what's actually been built.
+description: Generate a dated HTML status page (project/status/status-YYYY-MM-DD.html) summarising worldcities — what it does, how to run it, available themes, and the AGENTS.md automation vision vs. what's actually been built.
 ---
 
-Generate a project status HTML report for maptoposter.
+Generate a project status HTML report for worldcities.
 
 ## What to read first (do all reads in parallel)
 
@@ -29,7 +29,7 @@ where `YYYY-MM-DD` is today's date. No external dependencies — all CSS and SVG
 The page answers: "What does this tool do, how do I generate a poster, and what's the gap between the current state and the vacation-poster vision?"
 
 ### 1. Header bar
-- Tool name: **maptoposter**
+- Tool name: **worldcities**
 - Tagline: Generate minimalist city map posters from OpenStreetMap data
 - Type badge: "Personal Utility — Run When Needed"
 - Origin badge: "Fork of originalankur/maptoposter"
@@ -170,7 +170,7 @@ Run the command above with your chosen city and theme. Done in 30–60 seconds.
 4. Read AGENTS.md in full — it has the full schema and script expectations already written
 
 ### 10. Footer
-"Generated YYYY-MM-DD · maptoposter · Personal Python utility · derived from README.md, AGENTS.md, diary, git log"
+"Generated YYYY-MM-DD · worldcities · Personal Python utility · derived from README.md, AGENTS.md, diary, git log"
 
 ## Visual style
 
@@ -200,7 +200,7 @@ Use this exact format — YAML frontmatter only, no markdown body:
 
 ```
 ---
-name: maptoposter
+name: worldcities
 tagline: <one sentence — what this project is, derived from the files you just read>
 group: Utilities
 profile: Utility

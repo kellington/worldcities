@@ -1,6 +1,6 @@
 ---
-name: maptoposter
-tagline: A personal fork of originalankur/maptoposter that generates minimalist, print-quality city map posters from OpenStreetMap data, intended for posters of places Rob and Lucie vacation.
+name: worldcities
+tagline: Map posters + trip sites. A personal fork of originalankur/maptoposter that generates minimalist, print-quality city map posters from OpenStreetMap data, plus tripsite/, which builds shareable static trip websites hosted at worldcities.ca.
 group: Utilities
 profile: Utility
 priority: 12

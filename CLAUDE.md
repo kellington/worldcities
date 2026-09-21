@@ -1,10 +1,15 @@
-# CLAUDE.md — maptoposter
+# CLAUDE.md — worldcities
 
 This file tells Claude Code how to operate in this repo.
 
 ## What this repo is
 
-A clone of a map poster generator, customized for personal use. Run occasionally to generate a custom map poster. No productization plans.
+worldcities = map posters + trip sites.
+
+- **Posters:** a clone of originalankur/maptoposter, customized for personal use. Run occasionally to generate a custom map poster. Still supported.
+- **Trip sites:** `tripsite/` builds a static, shareable website for a trip (map, places, events) from a trip profile in gitignored `trips/`. Hosted on Cloudflare Pages at worldcities.ca.
+
+No productization plans.
 
 ## How to use it
 
