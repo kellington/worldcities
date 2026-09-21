@@ -4,6 +4,6 @@ tagline: Map posters + trip sites. A personal fork of originalankur/maptoposter 
 group: Utilities
 profile: Utility
 priority: 12
-status: Dormant since 2026-06-11 — base CLI works for one-off posters; the AGENTS.md vacation-automation layer (locations.yaml + scripts/) is still not started and no posters have been generated.
-generated: 2026-09-17
+status: Active — tripsite/ v0 shipped 2026-09-21 (CLI builds a static trip site from a trip profile; 164 tests). Project renamed maptoposter -> worldcities. Mexico City 2026 trip site builds locally; nothing deployed yet — Cloudflare Pages/Access gates in tripsite/README.md are next. Poster CLI unchanged and still supported.
+generated: 2026-09-21
 ---
