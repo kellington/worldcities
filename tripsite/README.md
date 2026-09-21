@@ -13,13 +13,19 @@ uv run tripsite/build.py trips/mexico-city-2026.md                 # build one t
 uv run tripsite/build.py trips/mexico-city-2026.md trips/lisbon.md # build several in one run
 uv run tripsite/build.py trips/mexico-city-2026.md --dry-run       # validate only
 uv run tripsite/build.py trips/mexico-city-2026.md --out /tmp/site
+uv run tripsite/build.py trips/mexico-city-2026.md --refresh-transit  # re-fetch airport/metro
 ```
+
+The build is offline apart from one step: a trip that asks for an `airport:` or a
+`map: {metro: ...}` layer fetches that data from Overpass **once** and caches it under
+`cache/tripsite/`. Every later build reads the cache and makes no request at all.
 
 Writes:
 
 | File | What |
 |---|---|
 | `dist/<slug>/index.html` | one trip page per trip file (single file, trip data embedded as JSON) |
+| `dist/<slug>/metro.json` | **only** when a trip's metro geometry is too big to embed (>400 KB of JSON); the page then loads it on demand. Mexico City doesn't need one |
 | `dist/index.html` | neutral "World Cities" placeholder (no trip listing, so slugs don't leak) |
 | `dist/404.html` | neutral "Not found" page (noindex, no slugs). Without a top-level `404.html`, Cloudflare Pages treats the site as a single-page app and serves `index.html` with status 200 for every missing path; with it, a missing path gets a real 404 |
 | `dist/robots.txt` | `Disallow: /` |
@@ -38,8 +44,9 @@ site, and anything missing from it is taken down. So:
 - The build only removes things it wrote itself. Every page it writes carries
   `<meta name="generator" content="tripsite">`, and a stale trip folder is removed
   only if it holds nothing but an `index.html` with that marker in its `<head>`
-  (plus `.DS_Store`). The marker in the page body or inside an HTML comment
-  doesn't count. A folder without the marker or without an `index.html`, any
+  (plus an optional `metro.json` and `.DS_Store`). The marker in the page body or
+  inside an HTML comment doesn't count. A folder without the marker or without an
+  `index.html`, any
   symlink, or any other file stops the build: it is listed and nothing is deleted
   or written. Symlinks are never followed, written through or deleted. Every
   output is written to a temp file and then renamed into place, so a hardlinked
@@ -65,8 +72,8 @@ verify does that on Pages.
 Invalid profiles fail with every problem listed (missing fields, bad dates,
 end before start, unknown place ids, bad or unquoted times, unknown theme,
 out-of-range coordinates, duplicate YAML keys, `NO`/`yes`/`on` read as
-true/false). Events outside `start..end` are dropped with a warning. If any
-trip in a run fails, nothing is written.
+true/false, a malformed or unresolvable IATA code). Events outside `start..end`
+are dropped with a warning. If any trip in a run fails, nothing is written.
 
 Tests: `uv run python -m unittest discover -s tripsite -p 'test_*.py' -v`
 (the 7 "expected failure" results are the accepted limits below, not open bugs)
@@ -81,7 +88,9 @@ The body supports basic Markdown only: headings, paragraphs, lists, `code`,
 ---
 trip:
   name: Mexico City 2026
-  slug: mexico-city-2026-8877      # lowercase/digits/hyphens; add a random suffix
+  slug: mexico-city-2026-xxxx      # lowercase/digits/hyphens; add a random suffix of
+                                   # your own. Never paste a live slug into this file:
+                                   # the slug is the only thing guarding an unlisted page
   start: 2026-10-22                # YYYY-MM-DD
   end: 2026-10-31
   timezone: America/Mexico_City    # IANA name
@@ -90,9 +99,12 @@ trip:
   center: {lat: 19.42, lon: -99.155}
   zoom: 12                         # 1..19
   theme: terracotta                # any themes/<name>.json (page colours only)
+  airport: MEX                     # optional; IATA code, looked up once and cached
 privacy:
   hotel_display: approximate       # exact | approximate | hidden
   noindex: true                    # pages are always noindex regardless
+map:                               # optional reference layers
+  metro: off                       # on | off. Absent = no metro layer at all
 locations:                         # our places, always on the map
   - {id: hotel, name: ..., category: stay, address: ..., lat: .., lon: .., notes: .., url: https://..}
   - {id: aunts, name: ..., category: visit, private: true, address: ..., lat: .., lon: ..}
@@ -105,15 +117,155 @@ events:
     name: Gran Desfile de Día de Muertos
     location: zocalo               # a place id, or {lat, lon, label}; optional
     booked: false                  # optional
-    source: https://...            # optional
+    keep: true                     # optional; keep it even though it is outside start..end
+    url: https://...               # optional; the thing itself (tickets, venue, museum)
+    source: https://...            # optional; where the information came from
     notes: ...                     # optional
 ---
 ```
 
-- Every place needs hand-entered `lat`/`lon`. The build does no geocoding.
+- Every **place** needs hand-entered `lat`/`lon`. The build never geocodes a place name.
+  (`trip.airport` is the one exception, and it resolves an IATA *code*, not a name —
+  see "Airport" below.)
+- `category` is free text (lowercased). It groups the popular-places checkboxes and is
+  shown in the map popup, capitalised — except for the few in `CATEGORY_LABELS`, which
+  have a proper display name: `daytrip` reads **"Day trip"** in both places. A day-trip
+  place keeps the ordinary blue "popular" marker; the category heading is the hint.
 - Ids must be unique across `locations` and `popular`. Numeric ids work (`id: 1`, `location: 1`).
-- `url`/`source` must be `http(s)://`.
+- `url`/`source` must be `http(s)://`. Anything else fails the build.
 - Duplicate keys anywhere in the frontmatter are an error, not a silent overwrite.
+
+### Events outside the trip dates (`keep`)
+
+An event whose `date` falls outside `trip.start .. trip.end` is **dropped** with a
+warning naming it — that is still the default, and the warning now says how to keep it.
+
+With `keep: true` it is kept instead and rendered in its own section, **"Just outside
+your dates"**, below the day-by-day list:
+
+- sorted by date, each row showing its own date and weekday ("Sat 31 Oct"), plus the
+  year when it isn't the trip's year;
+- never inside a day group — the day list still covers only `start..end`;
+- still pinned on the map, still clickable (⌖), still shows its `url` (`↗`), `source`
+  and `notes`, exactly like an in-range event;
+- subject to every privacy rule: a kept event within 400 m of a non-`exact` stay is
+  treated as the stay (same warning, same map behaviour), and its text goes through the
+  leak scan.
+
+The section is not rendered at all when nothing was kept. On an event inside the dates
+`keep` does nothing. Use it for the day after you fly home, or a parade you want on the
+page even though you miss it.
+
+### Links (`url` and `source`)
+
+Both are optional, both are validated the same way, and both open in a new tab
+(`target="_blank" rel="noopener noreferrer"`). They mean different things:
+
+| Field | On | Means | Shown as |
+|---|---|---|---|
+| `url` | places (`locations`, `popular`) and events | **the thing itself** — the museum's own page, the venue, the ticket page | "Website" in the map popup; a small `↗` after the name in the side list and in the event row |
+| `source` | events only | **where the information came from** — the listing or article you read the date and time in | "Source" in the event row and in the map popup |
+
+If an event has both, the popup shows `Website · Source`.
+
+The `↗` in the side lists is a plain `<a>` placed **outside** the checkbox `<label>`
+and outside the pan-to-map `<button>`, so clicking it only follows the link: it never
+toggles a popular place's checkbox and never moves the map. It is an ordinary anchor,
+so it is reachable by Tab, and it carries an accessible label such as
+"Open the Museo Frida Kahlo (Casa Azul) website in a new tab".
+
+A stay's `url` is **never published** unless `hotel_display: exact` — see below.
+
+### Airport (`trip.airport`)
+
+Optional. A trip's airport is a **reference point, never a place**: it is not in
+`locations` or `popular`, it can never be a stay, it takes no part in the privacy
+rules or the leak scan, and it does not change the initial view (still
+`trip.center`/`trip.zoom`).
+
+```yaml
+trip:
+  airport: MEX                                              # short form: just the code
+  airport: {code: MEX, name: Benito Juárez}                 # override the name only
+  airport: {code: TLC, name: Toluca, lat: 19.337, lon: -99.566}   # no lookup at all
+  airport: [MEX, {code: TLC, name: Toluca, lat: .., lon: ..}]     # a trip using two
+```
+
+- The code is upper-cased for you (`mex` works) and must be exactly three letters.
+- **Coordinates come from Overpass**, matching `aeroway=aerodrome` + `iata=<CODE>` —
+  never a guess. The answer is cached (below), so only the first build makes a request.
+- `name` in the trip file always wins. Otherwise OSM's `name:en`, then `name`.
+- If the code can't be resolved and you gave no `lat`/`lon`, **the build fails** and
+  prints the line to paste in, with the coordinates spelled out. It never falls back to
+  an approximate position.
+
+On the page: an amber disc with a white plane, deliberately unlike the round place pins;
+a popup with the name, `Airport · <CODE>` and a Google Maps link; its own legend entry;
+and a single **Airport** checkbox under "Getting around" in the side panel, **on by
+default** (it is a reference point, so it is more useful visible). "Show all places on
+map" includes it.
+
+### Metro lines (`map.metro`)
+
+Optional, and **opt-in**: with no `map:` section there is no metro layer and no network
+call. `metro: on` draws the lines at load; `metro: off` puts the layer and its checkbox
+on the page with the lines hidden until asked for — that is the suggested default, so the
+trip pins stay the focus. Switching between them is a one-word edit; nothing is re-fetched.
+
+- Fetched from Overpass as subway **route relations** (`type=route` + `route=subway`)
+  inside a square about 60 km across centred on `trip.center`, with member geometry
+  inline (`out geom`).
+- The two running directions of a line share the same `ref`, so they are merged into one
+  entry, and their shared way geometry is de-duplicated. Platform and stop members are
+  ignored — this is track, not furniture.
+- Each line is drawn in its **official OSM `colour` tag**; a line without a usable hex
+  colour falls back to a readable palette colour. Lines sort by number, then letter.
+- Geometry is simplified with Douglas-Peucker at a 15 m tolerance (endpoints always kept)
+  and rounded to 5 decimals. For Mexico City that is 12 lines and 938 points, ~21 KB of
+  JSON, down from ~82 KB unsimplified.
+- **One "Metro lines" checkbox** turns the whole network on or off, with a compact
+  colour-chip legend of the line numbers beside it (each chip's tooltip is the full line
+  name). The lines are drawn in their own map pane *below* the pins and are
+  non-interactive, so they never cover a marker or swallow a click. They are deliberately
+  **excluded from "Show all places on map"** — a 60 km network would zoom the trip away.
+- **Stations are not drawn.** They are a second query and several hundred more points for
+  something the base OSM tiles already label; interchanges alone would still need the
+  station relations. Not worth the weight today.
+- Any city with subway relations in OSM works. If the query returns nothing (no metro, or
+  the wrong centre), the build **warns and carries on** with no layer — a missing
+  reference overlay is never worth failing a build for. Same for an Overpass outage.
+
+### Overpass, caching and page weight
+
+Both lookups go to `https://overpass-api.de/api/interpreter` as **GET** requests, with a
+named User-Agent, at least 1.1 s between requests, a patient timeout, and a backing-off
+retry on 429 and 504 only. A build makes **at most one request per airport code plus one
+per city**, and **none at all** once the cache is warm.
+
+Everything fetched is cached under `cache/tripsite/` (gitignored, outside `dist/`):
+
+| File | What |
+|---|---|
+| `airports.json` | one entry per IATA code: code, name, lat, lon, source, date |
+| `metro-<city>-<hash>.json` | the **raw** Overpass response, keyed by city and rounded bounding box, with the query that produced it |
+
+A miss is never cached, so fixing a typo'd code and rebuilding just works.
+`--refresh-transit` ignores both caches and re-fetches.
+
+```bash
+uv run tripsite/build.py trips/mexico-city-2026.md --refresh-transit
+```
+
+**Page weight.** The metro geometry is embedded in the page while it stays under 400 KB
+of JSON. Above that the build writes it to `dist/<slug>/metro.json` instead and the page
+fetches it the first time the layer is switched on; the build prints which route it took,
+and `metro.json` must then be uploaded with the page (see Gate 5). Mexico City is
+~21 KB, so it is embedded and there is no sibling file.
+
+For the Mexico City trip, adding the airport and the (default-off) metro layer took the
+page from **28,966 to 58,040 bytes** raw, 16,279 bytes gzipped: ~21 KB of metro geometry,
+~0.5 KB for the airport, and ~5.4 KB of layer code and CSS that is now present on every
+trip page, layers or not.
 
 ### Privacy behaviour (stays)
 
@@ -172,20 +324,40 @@ Access, and it's fine if invitees know the hotel. The tests for them in
   decimals (about 100 m) deliberately pass, so a nearby pin or a body mention at
   3 decimals is not caught.
 
+**Open interaction (metro layer × leak scan), not yet decided.** The coordinate half of
+the leak scan flags any number on the page starting with the stay's latitude at 4 dp when
+a number starting with its longitude at 4 dp sits within 80 characters. Metro geometry is
+hundreds of 5-dp lat/lon pairs. So a **non-`exact`** stay within roughly 15 m of a metro
+line's drawn geometry would make the build fail with "private stay coordinates appear on
+the page" — a false positive (the vertex comes from OSM and says nothing about the stay),
+but a confusing one. It is the safe direction to fail in, so nothing was changed. Checked
+on 2026-09-20 against the live trip in all three `hotel_display` modes: no metro vertex
+falls in either of the stay's 4-dp coordinate bands, and the leak scan reports no hits.
+If it ever does bite, the choice is to exempt the metro block from the coordinate scan or
+to set `map.metro` off for that trip — Rob's call, not the build's. (Distances between a
+private stay and anything else stay out of this file: they narrow down where it is.)
+
 Every page carries `noindex,nofollow` (meta tag and `X-Robots-Tag` header) and
 `referrer: strict-origin-when-cross-origin`, so OSM and unpkg see only the
 origin (`https://worldcities.ca`), never the slug path.
 
 Map markers use a fixed palette that stays visible on OSM tiles in every theme:
-our places red, popular places blue, event spots teal (one marker, reused), and
-the approximate stay area a purple circle with a dashed dark outline. The theme
-only colours the page (header, panel, text). The legend under the map lists only
-the groups that are on the page. The stay swatch has a white ring so its dashed
-edge also shows on dark themes such as noir.
+our places red, popular places blue, event spots teal (one marker, reused), the
+approximate stay area a purple circle with a dashed dark outline, and the airport
+an amber disc with a white plane (a different *shape*, not just a different
+colour, so it reads as "not one of our pins"). Metro lines are the exception that
+proves the rule: they keep their own official OSM colours. The theme only colours
+the page (header, panel, text). The legend under the map lists only the groups
+that are on the page. The stay swatch has a white ring so its dashed edge also
+shows on dark themes such as noir.
 
 Third-party requests from the page: Leaflet 1.9.4 from unpkg (pinned with SRI
 hashes) and map tiles from `tile.openstreetmap.org` (standard OSM tiles,
-attributed, no prefetching). The favicon is inline, so it makes no request.
+attributed, no prefetching). The favicon is inline, so it makes no request. The
+airport and metro data are fetched **at build time**, not by the page, and are
+embedded in it — so a visitor's browser never talks to Overpass. (The one
+exception: if the metro geometry was too big to embed, the page fetches its own
+`metro.json`, same origin.)
 
 ---
 
@@ -415,8 +587,15 @@ Blast radius: Pages project worldcities only. This upload REPLACES the whole sit
 Do exactly (CLI, from the repo root):
   npx wrangler pages deploy dist --project-name worldcities --branch main
   (--branch main is required, or wrangler makes a preview deploy from branch "vscode")
+  Upload the whole dist/ folder, not the index.html files. A trip whose metro geometry
+  was too big to embed also has a dist/<slug>/metro.json beside its page, and the build
+  prints a line saying so; without it the Metro lines checkbox does nothing. Mexico City
+  does NOT produce one (its metro data is embedded), so today dist/<slug>/ holds only
+  index.html. Check with: find dist -type f | sort
 Expect: "Deployment complete".
 Verify (per slug in dist/):
+  # only for a slug whose build printed a metro.json line:
+  curl -sI https://worldcities.ca/<slug>/metro.json | head -1   -> the Access 302, not a 404
   curl -sI https://worldcities.ca/<slug>/ | grep -iE "^(HTTP|location)"
     -> still the Access 302 to <team>.cloudflareaccess.com
   curl -sI https://worldcities.pages.dev/<slug>/ | grep -iE "^(HTTP|location)"

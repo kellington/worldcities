@@ -10,18 +10,24 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import math
+import re
 import sys
 import tempfile
 import textwrap
 import unittest
+from html.parser import HTMLParser
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build
 
 SLUG = "test-trip-1234"
-HOTEL_LAT, HOTEL_LON = 19.4128960, -99.1713001
+# Fictional stay coordinates. Invented for the tests, not anybody's address: they sit in
+# open ground in Mexico City's general area so distance/plausibility checks still mean
+# something. Never put a real stay's coordinates in this file — it is public.
+HOTEL_LAT, HOTEL_LON = 19.4533017, -99.2087442
 
 BASE = """\
 trip:
@@ -161,7 +167,7 @@ class TestPrivacy(BuildCase):
         rc, page, _ = self.build(HOTEL + "events:\n  - {date: 2026-10-22, kind: plan, name: Nap, location: secret-inn}\n",
                                  display="hidden")
         self.assertEqual(rc, 0)
-        for s in PRIVATE_STRINGS + ["_stay", '"approx"', "19.413", "-99.171"]:
+        for s in PRIVATE_STRINGS + ["_stay", '"approx"', "19.453", "-99.208", "-99.209"]:
             self.assertNotIn(s, page)
         self.assertIn("Nap", page)  # event kept, map link dropped
         self.assertNotIn('class="linkish event-go"', page)
@@ -244,7 +250,7 @@ class TestYamlGotchas(BuildCase):
         self.assertEqual(data["events"][0]["loc"], {"ref": "1"})
 
 
-NEAR_HOTEL = (19.4150, -99.1700)  # ~285 m from the hotel
+NEAR_HOTEL = (19.4554, -99.2074)  # ~273 m from the hotel (inside NEAR_STAY_M = 400)
 
 
 class TestPrivacyChecks(BuildCase):
@@ -350,7 +356,7 @@ class TestPrivacyChecks(BuildCase):
         self._assert_leak_blocks(hotel, body="Postcode 99001, easy to find.")
 
     def test_leak_scan_coords_in_body(self) -> None:
-        self._assert_leak_blocks(HOTEL, body="Meet at 19.41290, -99.17130 please.")
+        self._assert_leak_blocks(HOTEL, body=f"Meet at {HOTEL_LAT:.5f}, {HOTEL_LON:.5f} please.")
 
     def test_leak_scan_coords_as_popular_place(self) -> None:
         self._assert_leak_blocks(HOTEL + textwrap.dedent(f"""\
@@ -374,12 +380,13 @@ class TestPrivacyChecks(BuildCase):
 
     def test_scan_unit(self) -> None:
         stay = {"name": "Casa Uno", "address": "12 Calle Falsa, 06700 Ciudad", "url": None,
-                "lat": 19.4128960, "lon": -99.1713001}
+                "lat": HOTEL_LAT, "lon": HOTEL_LON}
         self.assertEqual(build.scan_for_leaks("<p>nothing</p>", [stay]), [])
         self.assertTrue(build.scan_for_leaks("<p>CALLE FALSA</p>", [stay]))
-        self.assertTrue(build.scan_for_leaks('"lat": 19.412896,\n "lon": -99.1713001', [stay]))
-        self.assertTrue(build.scan_for_leaks("query=19.4129,-99.1713", [stay]))
-        self.assertEqual(build.scan_for_leaks("code 067001 and 19.4129 alone", [stay]), [])
+        self.assertTrue(build.scan_for_leaks(f'"lat": {HOTEL_LAT},\n "lon": {HOTEL_LON}', [stay]))
+        self.assertTrue(build.scan_for_leaks(f"query={HOTEL_LAT:.4f},{HOTEL_LON:.4f}", [stay]))
+        # a lone latitude with no partner longitude nearby, and a postcode-lookalike
+        self.assertEqual(build.scan_for_leaks(f"code 067001 and {HOTEL_LAT:.4f} alone", [stay]), [])
 
 
 class TestSiteOutput(BuildCase):
@@ -626,19 +633,19 @@ class TestLabelsAndLegend(BuildCase):
     def test_popular_within_100m_of_stay_warns(self) -> None:
         near = textwrap.dedent("""\
             popular:
-              - {id: kiosk, name: Kiosk, category: food, lat: 19.4133, lon: -99.1716, default_on: true}
-            """)
+              - {id: kiosk, name: Kiosk, category: food, lat: 19.4537, lon: -99.2090, default_on: true}
+            """)  # ~52 m from the stay
         rc, _, err = self.build(HOTEL + near)
         self.assertEqual(rc, 0, err)  # a warning, not a failure
         self.assertIn("popular 'kiosk'", err)
         self.assertIn("< 100 m", err)
-        far = near.replace("19.4133", "19.4150")  # ~240 m
+        far = near.replace("19.4537", "19.4554")  # ~235 m
         rc, _, err = self.build(HOTEL + far)
         self.assertEqual(rc, 0, err)
         self.assertNotIn("popular 'kiosk'", err)
 
     def test_popular_near_stay_no_warning_when_exact(self) -> None:
-        near = "popular:\n  - {id: kiosk, name: Kiosk, category: food, lat: 19.4133, lon: -99.1716, default_on: true}\n"
+        near = "popular:\n  - {id: kiosk, name: Kiosk, category: food, lat: 19.4537, lon: -99.2090, default_on: true}\n"
         _, p = self.load_data(HOTEL + near, display="exact")
         self.assertFalse(any("kiosk" in w for w in p.warnings))
 
@@ -662,6 +669,411 @@ class TestMarkdown(unittest.TestCase):
         self.assertIn("<strong>bold</strong>", out)
         self.assertIn("<em>it</em>", out)
         self.assertIn("snake_case_word", out)
+
+
+class AnchorNesting(HTMLParser):
+    """Records, for every <a> in the document, the tag stack it sits inside.
+
+    Used for the DOM-level check that a side-list '↗' link is NOT inside the checkbox
+    <label> (which would toggle the box on click) and NOT inside the pan-to-map <button>."""
+
+    VOID = frozenset({"input", "img", "br", "hr", "meta", "link", "source"})
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.stack: list[tuple[str, dict]] = []
+        self.anchors: list[tuple[dict, list[str], list[str]]] = []  # attrs, tag stack, class stack
+
+    def handle_starttag(self, tag: str, attrs: list) -> None:
+        d = dict(attrs)
+        if tag == "a":
+            self.anchors.append((d, [t for t, _ in self.stack],
+                                 [a.get("class", "") for _, a in self.stack]))
+        if tag not in self.VOID:
+            self.stack.append((tag, d))
+
+    def handle_endtag(self, tag: str) -> None:
+        for i in range(len(self.stack) - 1, -1, -1):
+            if self.stack[i][0] == tag:
+                del self.stack[i:]
+                return
+
+
+def anchors_in(html_text: str) -> list[tuple[dict, list[str], list[str]]]:
+    parser = AnchorNesting()
+    parser.feed(html_text)
+    return parser.anchors
+
+
+def ext_anchors(html_text: str) -> list[tuple[dict, list[str], list[str]]]:
+    return [a for a in anchors_in(html_text) if "ext" in (a[0].get("class") or "").split()]
+
+
+PLACE_WITH_URL = """\
+popular:
+  - {id: museo, name: Museo Test, category: museum, lat: 19.35, lon: -99.16, default_on: true,
+     url: https://museo.example/visit}
+  - {id: plain, name: No Site, category: museum, lat: 19.36, lon: -99.17, default_on: true}
+"""
+
+
+class TestLinks(BuildCase):
+    """`url` (the thing itself) and `source` (where the info came from) on places and events."""
+
+    # --- events accept url alongside source ------------------------------------ #
+
+    def test_event_url_is_validated_and_kept(self) -> None:
+        data, p = self.load_data(
+            "events:\n  - {date: 2026-10-22, kind: plan, name: Museum, "
+            "url: 'https://museo.example/tickets', source: 'https://news.example/a'}\n")
+        self.assertFalse(p.errors, p.errors)
+        self.assertEqual(data["events"][0]["url"], "https://museo.example/tickets")
+        self.assertEqual(data["events"][0]["source"], "https://news.example/a")
+
+    def test_event_url_and_source_reach_the_page(self) -> None:
+        rc, page, err = self.build(
+            "events:\n  - {date: 2026-10-22, kind: plan, name: Museum, "
+            "url: 'https://museo.example/tickets', source: 'https://news.example/a'}\n")
+        self.assertEqual(rc, 0, err)
+        # The event row: '↗' for the url, a worded "Source" link for the source.
+        row_link = [a for a in ext_anchors(page) if a[0]["href"] == "https://museo.example/tickets"]
+        self.assertEqual(len(row_link), 1)
+        self.assertIn('href="https://news.example/a"', page)
+        self.assertIn(">Source</a>", page)
+        # The popup is built by the page script from trip-data, so both must be in the payload.
+        payload = json.loads(page.split('id="trip-data">', 1)[1].split("</script>", 1)[0]
+                             .replace("\\u0026", "&").replace("\\u003c", "<").replace("\\u003e", ">"))
+        self.assertEqual(payload["events"][0]["url"], "https://museo.example/tickets")
+        self.assertEqual(payload["events"][0]["source"], "https://news.example/a")
+
+    def test_event_popup_labels_url_website_and_source_source(self) -> None:
+        self.assertIn('link(ev.url, "Website")', build.PAGE_JS)
+        self.assertIn('link(ev.source, "Source")', build.PAGE_JS)
+        self.assertIn('a.target = "_blank"; a.rel = "noopener noreferrer";', build.PAGE_JS)
+
+    def test_event_without_url_renders_no_ext_link(self) -> None:
+        rc, page, err = self.build("events:\n  - {date: 2026-10-22, kind: plan, name: Museum}\n")
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(ext_anchors(page), [])
+
+    # --- bad urls fail validation ---------------------------------------------- #
+
+    def test_event_bad_url_fails_validation(self) -> None:
+        rc, page, err = self.build(
+            "events:\n  - {date: 2026-10-22, kind: plan, name: Museum, url: 'museo.example/tickets'}\n")
+        self.assertEqual(rc, 1)
+        self.assertEqual(page, "")
+        self.assertIn("events[0].url", err)
+        self.assertIn("must start with http:// or https://", err)
+
+    def test_event_javascript_url_rejected(self) -> None:
+        rc, _, err = self.build(
+            'events:\n  - {date: 2026-10-22, kind: plan, name: X, url: "javascript:alert(1)"}\n')
+        self.assertEqual(rc, 1)
+        self.assertIn("events[0].url", err)
+
+    def test_place_bad_url_fails_validation(self) -> None:
+        rc, _, err = self.build(
+            "popular:\n  - {id: m, name: M, category: museum, lat: 1, lon: 1, default_on: true,"
+            " url: 'ftp://m.example'}\n")
+        self.assertEqual(rc, 1)
+        self.assertIn("popular[0].url", err)
+
+    # --- links in the side lists ------------------------------------------------ #
+
+    def test_popular_link_is_outside_the_label(self) -> None:
+        """Clicking the '↗' must not toggle the checkbox: the anchor is not inside <label>."""
+        rc, page, err = self.build(PLACE_WITH_URL)
+        self.assertEqual(rc, 0, err)
+        links = [a for a in ext_anchors(page) if a[0]["href"] == "https://museo.example/visit"]
+        self.assertEqual(len(links), 1, "expected exactly one side-list link for the place")
+        attrs, tags, _ = links[0]
+        self.assertNotIn("label", tags, "link inside <label> would toggle the checkbox")
+        self.assertNotIn("button", tags)
+        self.assertIn("li", tags)
+        self.assertEqual(attrs.get("target"), "_blank")
+        self.assertEqual(attrs.get("rel"), "noopener noreferrer")
+        self.assertEqual(attrs.get("aria-label"), "Open the Museo Test website in a new tab")
+        # Keyboard reachable: a plain anchor with href, never tabindex="-1".
+        self.assertNotEqual(attrs.get("tabindex"), "-1")
+
+    def test_place_without_url_gets_no_link(self) -> None:
+        _, page, _ = self.build(PLACE_WITH_URL)
+        self.assertEqual(len(ext_anchors(page)), 1)  # only the one place that has a url
+        self.assertIn("No Site", page)
+
+    def test_event_link_is_outside_the_pan_to_map_button(self) -> None:
+        """Clicking the '↗' must not fire the event's pan-to-map click."""
+        rc, page, err = self.build(PLACE_WITH_URL + textwrap.dedent("""\
+            events:
+              - {date: 2026-10-22, kind: plan, name: Museum visit, location: museo,
+                 url: 'https://museo.example/tickets'}
+            """))
+        self.assertEqual(rc, 0, err)
+        self.assertIn('class="linkish event-go"', page)  # the pan-to-map button exists
+        links = [a for a in ext_anchors(page) if a[0]["href"] == "https://museo.example/tickets"]
+        self.assertEqual(len(links), 1)
+        attrs, tags, classes = links[0]
+        self.assertNotIn("button", tags, "link inside the pan-to-map button would move the map")
+        self.assertNotIn("label", tags)
+        self.assertFalse(any("event-go" in c for c in classes))
+        self.assertEqual(attrs.get("aria-label"), "Open the Museum visit website in a new tab")
+
+    def test_click_handler_ignores_anchors(self) -> None:
+        """Belt and braces: the delegated click handler bails out inside any link."""
+        self.assertIn('if (e.target.closest("a[href]")) return;', build.PAGE_JS)
+
+    def test_ours_list_place_url_renders(self) -> None:
+        rc, page, err = self.build(
+            "locations:\n  - {id: cafe, name: Our Cafe, category: food, address: 1 A St, lat: 19.4,"
+            " lon: -99.1, url: 'https://cafe.example'}\n")
+        self.assertEqual(rc, 0, err)
+        links = [a for a in ext_anchors(page) if a[0]["href"] == "https://cafe.example"]
+        self.assertEqual(len(links), 1)
+        self.assertNotIn("button", links[0][1])
+
+    # --- a stay's url is never published unless hotel_display is exact ---------- #
+
+    def test_stay_url_not_published_approximate(self) -> None:
+        rc, page, err = self.build(HOTEL, display="approximate")
+        self.assertEqual(rc, 0, err)
+        self.assertNotIn("secret-inn.example", page)
+        self.assertEqual(ext_anchors(page), [], "an approximate stay must get no website link")
+        for secret in PRIVATE_STRINGS:
+            self.assertNotIn(secret, page)
+
+    def test_stay_url_not_published_hidden(self) -> None:
+        rc, page, err = self.build(HOTEL, display="hidden")
+        self.assertEqual(rc, 0, err)
+        self.assertNotIn("secret-inn.example", page)
+        self.assertEqual(ext_anchors(page), [])
+
+    def test_stay_url_leak_still_fails_the_build(self) -> None:
+        """The leak scan already covers a stay url; adding side-list links keeps that true."""
+        self._leak_via_popular_url("approximate")
+        self._leak_via_popular_url("hidden")
+
+    def _leak_via_popular_url(self, display: str) -> None:
+        rc, page, err = self.build(HOTEL + textwrap.dedent("""\
+            popular:
+              - {id: decoy, name: Decoy, category: food, lat: 19.40, lon: -99.16, default_on: true,
+                 url: 'https://secret-inn.example'}
+            """), display=display)
+        self.assertEqual(rc, 1, f"{display}: a stay url on another place must fail the build")
+        self.assertEqual(page, "")
+        self.assertIn("privacy check failed", err)
+
+    def test_exact_stay_does_publish_its_url(self) -> None:
+        """Positive control: `exact` is the one mode where the stay is a normal place."""
+        rc, page, err = self.build(HOTEL, display="exact")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("https://secret-inn.example", page)
+        self.assertEqual(len(ext_anchors(page)), 1)
+
+    # --- escaping ---------------------------------------------------------------- #
+
+    def test_link_name_and_url_are_escaped(self) -> None:
+        rc, page, err = self.build(
+            'popular:\n  - {id: x, name: \'A "quoted" & <b>bold</b> name\', category: museum,'
+            " lat: 1, lon: 1, default_on: true, url: 'https://ex.example/?a=1&b=2'}\n")
+        self.assertEqual(rc, 0, err)
+        self.assertNotIn("<b>bold</b>", page)
+        links = ext_anchors(page)
+        self.assertEqual(len(links), 1)
+        # convert_charrefs=True: the parser gives back the decoded values, proving the
+        # markup was escaped rather than broken out of.
+        self.assertEqual(links[0][0]["href"], "https://ex.example/?a=1&b=2")
+        self.assertEqual(links[0][0]["aria-label"],
+                         'Open the A "quoted" & <b>bold</b> name website in a new tab')
+
+
+def payload_of(page: str) -> dict:
+    """The page's trip-data JSON, un-escaped the way the browser sees it."""
+    raw = page.split('id="trip-data">', 1)[1].split("</script>", 1)[0]
+    return json.loads(raw.replace("\\u0026", "&").replace("\\u003c", "<").replace("\\u003e", ">"))
+
+
+def outside_block(page: str) -> str:
+    """The 'Just outside your dates' block ('' if the page has none).
+
+    Ends at the enclosing </section>, not the first </div>: the event rows contain
+    their own <div class="ev-extra">."""
+    if '<div class="outside">' not in page:
+        return ""
+    return page.split('<div class="outside">', 1)[1].split("</section>", 1)[0]
+
+
+def days_block(page: str) -> str:
+    """The day-by-day <ol> ('' if absent)."""
+    if '<ol class="days">' not in page:
+        return ""
+    return page.split('<ol class="days">', 1)[1].split("</ol>", 1)[0]
+
+
+# BASE runs 2026-10-22 .. 2026-10-24, so 2026-10-26 is outside it.
+LATE = """\
+events:
+  - {date: 2026-10-26, time: "12:00", kind: city, name: Late Parade, %s
+     location: {lat: 19.4270, lon: -99.1677, label: On Reforma},
+     url: 'https://parade.example/route', source: 'https://news.example/p',
+     notes: Starts at the Angel}
+"""
+LATE_KEEP = LATE % "keep: true,"
+LATE_DROP = LATE % ""
+
+
+class TestKeepOutsideDates(BuildCase):
+    """`keep: true` keeps an out-of-range event and renders it under its own heading."""
+
+    def test_kept_event_is_not_dropped(self) -> None:
+        data, p = self.load_data(LATE_KEEP)
+        self.assertFalse(p.errors, p.errors)
+        self.assertEqual([e["name"] for e in data["events"]], [])
+        self.assertEqual([e["name"] for e in data["outside"]], ["Late Parade"])
+        self.assertFalse([w for w in p.warnings if "dropped" in w], p.warnings)
+
+    def test_without_the_flag_it_is_still_dropped(self) -> None:
+        rc, page, err = self.build(LATE_DROP)
+        self.assertEqual(rc, 0, err)
+        self.assertIn("dropped 'Late Parade' on 2026-10-26", err)
+        self.assertIn("keep: true", err)  # the warning says how to keep it
+        self.assertNotIn("Late Parade", page)
+        self.assertEqual(outside_block(page), "")
+        self.assertEqual(payload_of(page)["events"], [])
+
+    def test_kept_event_renders_in_its_own_section_not_in_a_day(self) -> None:
+        rc, page, err = self.build(LATE_KEEP)
+        self.assertEqual(rc, 0, err)
+        self.assertIn("Just outside your dates", page)
+        block = outside_block(page)
+        self.assertIn("Late Parade", block)
+        # The day grid still covers only start..end, and holds no kept event.
+        days = days_block(page)
+        self.assertNotIn("Late Parade", days)
+        self.assertNotIn('id="day-2026-10-26"', page)
+        for day in ("2026-10-22", "2026-10-23", "2026-10-24"):
+            self.assertIn(f'id="day-{day}"', days)
+        # ... and the section sits BELOW the day list.
+        self.assertLess(page.index("</ol>"), page.index('<div class="outside">'))
+
+    def test_kept_event_row_shows_its_date_and_weekday(self) -> None:
+        _, page, _ = self.build(LATE_KEEP)
+        self.assertIn('<span class="ev-date">Mon 26 Oct</span>', outside_block(page))
+        # An in-range row still has no date of its own (the day heading carries it).
+        _, page2, _ = self.build("events:\n  - {date: 2026-10-22, kind: plan, name: Lunch}\n")
+        self.assertNotIn('<span class="ev-date"', days_block(page2))
+
+    def test_year_shown_only_when_it_differs_from_the_trip(self) -> None:
+        _, page, _ = self.build(LATE_KEEP.replace("2026-10-26", "2027-01-02"))
+        self.assertIn('<span class="ev-date">Sat 2 Jan 2027</span>', outside_block(page))
+
+    def test_section_absent_when_nothing_is_kept(self) -> None:
+        rc, page, err = self.build("events:\n  - {date: 2026-10-22, kind: plan, name: Lunch}\n")
+        self.assertEqual(rc, 0, err)
+        self.assertNotIn("Just outside your dates", page)
+        self.assertNotIn('class="outside"', page)
+        rc, page, err = self.build("events: []\n")  # and with no events at all
+        self.assertEqual(rc, 0, err)
+        self.assertNotIn("Just outside your dates", page)
+
+    def test_sorted_by_date_and_numbered_after_the_in_range_events(self) -> None:
+        rc, page, err = self.build(textwrap.dedent("""\
+            events:
+              - {date: 2026-10-27, kind: city, name: Zed Late, keep: true, location: {lat: 19.43, lon: -99.13}}
+              - {date: 2026-10-23, kind: plan, name: Midweek, location: {lat: 19.42, lon: -99.15}}
+              - {date: 2026-10-26, kind: city, name: Early Late, keep: true, location: {lat: 19.44, lon: -99.14}}
+            """))
+        self.assertEqual(rc, 0, err)
+        block = outside_block(page)
+        self.assertLess(block.index("Early Late"), block.index("Zed Late"))  # sorted by date
+        names = [e["name"] for e in payload_of(page)["events"]]
+        self.assertEqual(names, ["Midweek", "Early Late", "Zed Late"])
+        # Every data-event index must address the right event in that payload.
+        for idx, name in re.findall(r'data-event="(\d+)"[^>]*>([^<]+?) <span', page):
+            self.assertEqual(names[int(idx)], name.strip())
+
+    def test_kept_event_keeps_map_button_url_and_source(self) -> None:
+        rc, page, err = self.build(LATE_KEEP)
+        self.assertEqual(rc, 0, err)
+        block = outside_block(page)
+        self.assertIn('class="linkish event-go"', block)     # still pinned/clickable
+        self.assertIn(">Source</a>", block)
+        links = [a for a in ext_anchors(page) if a[0]["href"] == "https://parade.example/route"]
+        self.assertEqual(len(links), 1)                      # the '↗' url link
+        self.assertNotIn("button", links[0][1])
+        ev = payload_of(page)["events"][0]
+        self.assertEqual(ev["loc"], {"lat": 19.427, "lon": -99.1677, "label": "On Reforma"})
+        self.assertEqual(ev["day"], "Mon 26 Oct")
+        self.assertEqual(ev["source"], "https://news.example/p")
+
+    def test_keep_inside_the_dates_changes_nothing(self) -> None:
+        rc, page, err = self.build(
+            "events:\n  - {date: 2026-10-23, kind: plan, name: Lunch, keep: true}\n")
+        self.assertEqual(rc, 0, err)
+        self.assertIn("Lunch", days_block(page))
+        self.assertEqual(outside_block(page), "")
+
+    def test_keep_must_be_a_boolean(self) -> None:
+        rc, _, err = self.build(
+            "events:\n  - {date: 2026-10-26, kind: plan, name: X, keep: maybe}\n")
+        self.assertEqual(rc, 1)
+        self.assertIn("events[0].keep", err)
+        self.assertIn("expected true or false", err)
+
+    # --- the privacy rules still apply to a kept event -------------------------- #
+
+    def test_kept_event_near_the_stay_is_treated_as_the_stay(self) -> None:
+        near = LATE_KEEP.replace("19.4270, lon: -99.1677", f"{HOTEL_LAT}, lon: {HOTEL_LON}")
+        data, p = self.load_data(HOTEL + near, display="approximate")
+        self.assertFalse(p.errors, p.errors)
+        self.assertTrue([w for w in p.warnings if "Late Parade" in w and "private stay" in w],
+                        p.warnings)
+        self.assertEqual(data["outside"][0]["loc"], {"ref": "_stay1"})
+
+    def test_kept_event_coordinates_never_reach_the_page(self) -> None:
+        near = LATE_KEEP.replace("19.4270, lon: -99.1677", f"{HOTEL_LAT}, lon: {HOTEL_LON}")
+        for display in ("approximate", "hidden"):
+            rc, page, err = self.build(HOTEL + near, display=display)
+            self.assertEqual(rc, 0, err)
+            self.assertIn("Late Parade", page)           # the event survives
+            for secret in PRIVATE_STRINGS:
+                self.assertNotIn(secret, page, display)
+            self.assertEqual(build.scan_for_leaks(page, [{
+                "name": "Secret Inn", "address": "1 Hidden Lane", "url": "https://secret-inn.example",
+                "lat": HOTEL_LAT, "lon": HOTEL_LON}]), [], display)
+            loc = payload_of(page)["events"][0]["loc"]
+            self.assertEqual(loc, {"ref": "_stay1"} if display == "approximate" else None, display)
+
+    def test_kept_event_text_is_leak_scanned(self) -> None:
+        """A kept event naming the stay fails the build, exactly like an in-range one."""
+        leaky = LATE_KEEP.replace("Late Parade", "Party at Secret Inn")
+        rc, page, err = self.build(HOTEL + leaky, display="approximate")
+        self.assertEqual(rc, 1)
+        self.assertEqual(page, "")
+        self.assertIn("privacy check failed", err)
+
+
+class TestCategoryLabels(BuildCase):
+    """`daytrip` reads "Day trip" in the panel and (via catLabels) in the map popup."""
+
+    DAYTRIP = ("popular:\n  - {id: teo, name: Far Field, category: daytrip, lat: 19.6921,"
+               " lon: -98.8277, default_on: true}\n")
+
+    def test_panel_heading_and_payload_label(self) -> None:
+        rc, page, err = self.build(self.DAYTRIP)
+        self.assertEqual(rc, 0, err)
+        self.assertIn("Day trip <span class=\"muted\">(1)</span>", page)
+        self.assertNotIn("Daytrip", page)
+        self.assertEqual(payload_of(page)["catLabels"]["daytrip"], "Day trip")
+        # It stays an ordinary popular pin: no new marker colour or legend row.
+        self.assertIn("dot--popular", legend_of(page))
+
+    def test_other_categories_are_unchanged(self) -> None:
+        self.assertEqual(build.pretty_category("street_art"), "Street art")
+        self.assertEqual(build.pretty_category("daytrip"), "Day trip")
+
+    def test_page_script_uses_the_label_map(self) -> None:
+        self.assertIn("var CAT_LABELS = data.catLabels || {};", build.PAGE_JS)
 
 
 if __name__ == "__main__":

@@ -23,12 +23,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build
-from test_build import SLUG, BuildCase
+from test_build import HOTEL_LAT, HOTEL_LON, SLUG, BuildCase
 
-ACCENT_HOTEL = """\
+# Same fictional coordinates as test_build (see the note there); nobody's real stay.
+ACCENT_HOTEL = f"""\
 locations:
-  - {id: stay1, name: "Casa Pátzcuaro", category: stay, address: "7 Calle Falsa, 99001 Testville",
-     lat: 19.4128960, lon: -99.1713001}
+  - {{id: stay1, name: "Casa Pátzcuaro", category: stay, address: "7 Calle Falsa, 99001 Testville",
+     lat: {HOTEL_LAT}, lon: {HOTEL_LON}}}
 """
 
 
@@ -51,12 +52,15 @@ class TestLeakScanHolds(BuildCase):
         self._blocked(ACCENT_HOTEL, "[map](https://maps.example/?q=99001)")
 
     def test_coords_in_url_encoded_query(self) -> None:
-        self._blocked(ACCENT_HOTEL, "[x](https://www.google.com/maps/search/?api=1&query=19.412896%2C-99.1713001)")
+        self._blocked(ACCENT_HOTEL,
+                      f"[x](https://www.google.com/maps/search/?api=1"
+                      f"&query={HOTEL_LAT}%2C{HOTEL_LON})")
 
     def test_string_coords_rejected_by_validation(self) -> None:
-        rc, _, err = self.build(ACCENT_HOTEL + textwrap.dedent("""\
+        rc, _, err = self.build(ACCENT_HOTEL + textwrap.dedent(f"""\
             popular:
-              - {id: p, name: P, category: food, lat: '19.412896', lon: '-99.1713001', default_on: true}
+              - {{id: p, name: P, category: food, lat: '{HOTEL_LAT}', lon: '{HOTEL_LON}',
+                 default_on: true}}
             """))
         self.assertEqual(rc, 1)
         self.assertIn("expected a number", err)
@@ -64,11 +68,11 @@ class TestLeakScanHolds(BuildCase):
     def test_event_390m_from_stay_is_folded(self) -> None:
         rc, page, err = self.build(ACCENT_HOTEL + textwrap.dedent("""\
             events:
-              - {date: 2026-10-22, kind: plan, name: D, location: {lat: 19.4164, lon: -99.1713, label: Bar Secreto}}
+              - {date: 2026-10-22, kind: plan, name: D, location: {lat: 19.4568, lon: -99.2087, label: Bar Secreto}}
             """))
         self.assertEqual(rc, 0, err)
         self.assertNotIn("Bar Secreto", page)
-        self.assertNotIn("19.4164", page)
+        self.assertNotIn("19.4568", page)
         self.assertIn('"ref": "_stay1"', page)
 
 
@@ -112,7 +116,7 @@ class TestOffsetStability(unittest.TestCase):
     def test_slug_change_keeps_the_same_circle(self) -> None:
         # Rotating a leaked slug is the natural fix; two different circles for one stay
         # intersect to a ~63 m-radius area (vs ~150 m for one circle).
-        place = {"id": "h", "name": "X", "lat": 19.4128960, "lon": -99.1713001}
+        place = {"id": "h", "name": "X", "lat": HOTEL_LAT, "lon": HOTEL_LON}
         self.assertEqual(build.offset_centre("trip-aaaa-1111", place)[:2],
                          build.offset_centre("trip-aaaa-2222", place)[:2])
 
