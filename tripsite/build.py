@@ -28,6 +28,10 @@ import re
 import stat
 import sys
 import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -58,6 +62,10 @@ ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$")
 THEME_RE = re.compile(r"^[a-z0-9_]+$")
 TIME_RE = re.compile(r"^(\d{1,2}):(\d{2})$")
 HEX_COLOUR_RE = re.compile(r"^#[0-9A-Fa-f]{3,8}$")
+# Only #RGB and #RRGGBB reach the page: an OSM colour tag with alpha would make a line
+# invisible, and a CSS colour name ("red") isn't safe to drop into a style attribute.
+CSS_HEX_RE = re.compile(r"^#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$")
+IATA_RE = re.compile(r"^[A-Z]{3}$")
 
 HOTEL_DISPLAY_CHOICES = ("exact", "approximate", "hidden")
 EVENT_KINDS = ("plan", "city")
@@ -82,8 +90,33 @@ MARKER_COLOURS = {
     "event": "#00695C",       # dark teal, white outline
     "stay": "#7B1FA2",        # purple fill, semi-transparent
     "stay-edge": "#2A0A3A",   # dark outline for the stay area
+    "airport": "#EF6C00",     # amber disc + white plane glyph: not a circle like the others
     "outline": "#FFFFFF",
 }
+
+# --- Overpass (airport lookup + metro lines) ------------------------------- #
+# Both are fetched once and cached on disk; a later build does no network call at all.
+# Cache lives outside dist/ and outside git (.gitignore already has "cache/*").
+OVERPASS_URL = "https://overpass-api.de/api/interpreter"
+# Overpass and Nominatim both ask for a named agent that identifies the application.
+OVERPASS_UA = "tripsite/0.1 (static trip-site builder; https://worldcities.ca)"
+OVERPASS_MIN_INTERVAL_S = 1.1   # same politeness floor as Nominatim: >= 1 request/second
+OVERPASS_TIMEOUT_S = 180
+OVERPASS_RETRY_STATUS = (429, 504)  # "too many requests" / "gateway timeout": back off, retry
+OVERPASS_RETRIES = 3
+OVERPASS_BACKOFF_S = (5, 15, 45)
+DEFAULT_CACHE_DIR = REPO_ROOT / "cache" / "tripsite"
+AIRPORT_CACHE_FILE = "airports.json"
+METRO_RADIUS_M = 30000          # bbox half-size around trip.center; covers a metropolitan network
+METRO_SIMPLIFY_M = 15.0         # Douglas-Peucker tolerance; endpoints are always kept
+METRO_COORD_DP = 5              # ~1 m; matches the rounding used for the approximate stay centre
+# Above this many bytes of JSON the metro data is written to dist/<slug>/metro.json and
+# fetched when the layer is first switched on, instead of being embedded in the page.
+METRO_INLINE_MAX_BYTES = 400_000
+METRO_SIDECAR = "metro.json"
+# Used in ref order when a route relation carries no usable `colour` tag.
+METRO_FALLBACK_COLOURS = ("#E53935", "#1E88E5", "#43A047", "#FB8C00", "#8E24AA",
+                          "#00ACC1", "#D81B60", "#6D4C41", "#3949AB", "#7CB342")
 FAVICON = ("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E"
            "%3Ccircle cx='8' cy='8' r='6' fill='%23C62828' stroke='white' stroke-width='2'/%3E%3C/svg%3E")
 
@@ -291,13 +324,14 @@ def load_trip(path: Path) -> tuple[dict, str, Problems]:
         raise SystemExit(f"error: {path}: frontmatter must be a mapping with 'trip:', 'locations:' etc.")
 
     p = Problems()
-    known_top = {"trip", "privacy", "locations", "popular", "events"}
+    known_top = {"trip", "privacy", "map", "locations", "popular", "events"}
     for key in raw:
         if key not in known_top:
             p.warn("frontmatter", f"unknown top-level key '{key}' ignored")
 
     trip = _validate_trip(raw.get("trip"), p)
     privacy = _validate_privacy(raw.get("privacy"), p)
+    map_opts = _validate_map(raw.get("map"), p)
     seen_ids: dict[str, str] = {}
     ours = [_validate_place(item, f"locations[{i}]", p, seen_ids, popular=False)
             for i, item in enumerate(as_list(raw.get("locations"), "locations", p))]
@@ -309,7 +343,10 @@ def load_trip(path: Path) -> tuple[dict, str, Problems]:
               for i, item in enumerate(as_list(raw.get("events"), "events", p))]
     events = [x for x in events if x]
 
-    data = {"trip": trip, "privacy": privacy, "ours": ours, "popular": popular, "events": events}
+    # "outside" holds events outside start..end that carry `keep: true`; filter_events fills it.
+    # "metro" is filled later by resolve_transit (it needs the cache / the network).
+    data = {"trip": trip, "privacy": privacy, "map": map_opts, "ours": ours, "popular": popular,
+            "events": events, "outside": [], "metro": None}
     return data, body, p
 
 
@@ -361,7 +398,80 @@ def _validate_trip(raw: Any, p: Problems) -> dict:
         p.err(f"{w}.theme", f"no theme {theme!r} in themes/ (available: {names})")
         theme = None
     t["theme"] = theme
+    t["airports"] = _validate_airports(raw.get("airport"), p)
     return t
+
+
+def _validate_airports(raw: Any, p: Problems) -> list[dict]:
+    """trip.airport: an IATA code, a {code, name, lat, lon} mapping, or a list of either.
+
+    Coordinates are optional here; resolve_transit fills them from the cache or Overpass.
+    An airport is never a place: it is not in `locations`/`popular`, never a stay, and
+    takes no part in the privacy rules or the leak scan."""
+    if raw is None:
+        return []
+    items = raw if isinstance(raw, list) else [raw]
+    out: list[dict] = []
+    seen: dict[str, int] = {}
+    for i, item in enumerate(items):
+        w = f"trip.airport[{i}]" if isinstance(raw, list) else "trip.airport"
+        air = _validate_one_airport(item, w, p)
+        if air is None:
+            continue
+        if air["code"] in seen:
+            p.err(w, f"duplicate airport code {air['code']!r}")
+            continue
+        seen[air["code"]] = i
+        out.append(air)
+    return out
+
+
+def _validate_one_airport(raw: Any, w: str, p: Problems) -> dict | None:
+    if isinstance(raw, dict):
+        code_raw = get(raw, "code", w, p)
+        name = as_text(get(raw, "name", w, p, required=False), f"{w}.name", p)
+        lat = as_coord(get(raw, "lat", w, p, required=False), f"{w}.lat", p, -90, 90)
+        lon = as_coord(get(raw, "lon", w, p, required=False), f"{w}.lon", p, -180, 180)
+        if (lat is None) != (lon is None):
+            p.err(w, "give both lat and lon, or neither (the code is then looked up on Overpass)")
+            lat = lon = None
+        for key in raw if isinstance(raw, dict) else ():
+            if key not in ("code", "name", "lat", "lon"):
+                p.warn(w, f"unknown airport key '{key}' ignored")
+    else:
+        code_raw, name, lat, lon = raw, None, None, None
+    code = as_text(code_raw, f"{w}.code", p)
+    if code is None:
+        return None
+    code = code.strip().upper()
+    if not IATA_RE.match(code):
+        p.err(f"{w}.code", f"{code!r} is not a 3-letter IATA code (e.g. MEX). Write the short form "
+                           "'airport: MEX', or give the full form with lat/lon.")
+        return None
+    return {"code": code, "name": name, "lat": lat, "lon": lon}
+
+
+def _validate_map(raw: Any, p: Problems) -> dict:
+    """Optional top-level `map:` section. Only `metro: on|off` for now.
+
+    Absent (or `metro` absent) means NO metro layer and no Overpass call at all: a build
+    only ever goes to the network for a trip that asked for one."""
+    opts = {"metro": None}
+    if raw is None:
+        return opts
+    if not isinstance(raw, dict):
+        p.err("map", "expected a mapping, e.g. map: {metro: on}")
+        return opts
+    for key in raw:
+        if key != "metro":
+            p.warn("map", f"unknown key '{key}' ignored")
+    if "metro" in raw:
+        # YAML 1.1 reads on/off/yes/no as booleans, which is exactly what is wanted here.
+        if raw.get("metro") is None:
+            p.err("map.metro", "expected on or off")
+        else:
+            opts["metro"] = as_bool(raw.get("metro"), "map.metro", p)
+    return opts
 
 
 def _validate_privacy(raw: Any, p: Problems) -> dict:
@@ -425,6 +535,12 @@ def _validate_event(raw: Any, w: str, p: Problems, seen_ids: dict[str, str]) -> 
     ev["kind"] = kind
     ev["name"] = as_text(get(raw, "name", w, p), f"{w}.name", p)
     ev["booked"] = as_bool(get(raw, "booked", w, p, required=False), f"{w}.booked", p)
+    # keep: an event outside the trip dates is normally dropped; with keep: true it is
+    # kept and shown under "Just outside your dates". Inside the dates it does nothing.
+    ev["keep"] = bool(as_bool(get(raw, "keep", w, p, required=False), f"{w}.keep", p))
+    # url = the thing itself (tickets, the venue, the museum page);
+    # source = where the information came from. Both optional, both must be http(s).
+    ev["url"] = as_url(get(raw, "url", w, p, required=False), f"{w}.url", p)
     ev["source"] = as_url(get(raw, "source", w, p, required=False), f"{w}.source", p)
     ev["notes"] = as_text(get(raw, "notes", w, p, required=False), f"{w}.notes", p)
 
@@ -535,7 +651,9 @@ def apply_privacy(data: dict, body: str, p: Problems) -> None:
         })
     data["ours"] = kept
     data["_private_stays"] = private_stays
-    for ev in data["events"]:
+    # Events kept outside the trip dates are pinned and published like any other, so they
+    # go through the same near-stay / hidden / renamed handling.
+    for ev in all_events(data):
         loc = ev["loc"]
         ref = loc.get("ref") if loc else None
         if loc and ref is None and loc.get("lat") is not None:
@@ -582,9 +700,14 @@ def _nearest_stay(loc: dict, stays: list[dict]) -> tuple[dict, float] | None:
     return best
 
 
+def all_events(data: dict) -> list[dict]:
+    """In-range events followed by the ones kept outside the dates, in render order."""
+    return list(data["events"]) + list(data.get("outside") or [])
+
+
 def _warn_if_leaked(place: dict, body: str, data: dict, p: Problems) -> None:
     texts = [body]
-    for e in data["events"]:
+    for e in all_events(data):
         loc = e.get("loc") or {}
         texts.append(f"{e.get('name') or ''} {e.get('notes') or ''} {loc.get('label') or ''}")
     for other in data["ours"] + data["popular"]:
@@ -657,17 +780,379 @@ def scan_for_leaks(page: str, stays: list[dict]) -> list[str]:
 
 
 def filter_events(data: dict, p: Problems) -> int:
+    """Split events into in-range (data["events"]) and kept-outside (data["outside"]).
+
+    An event outside start..end is dropped with a warning unless it has `keep: true`,
+    in which case it moves to data["outside"] and is rendered in its own section. It is
+    still pinned on the map and still subject to every privacy rule (apply_privacy and
+    the leak scan see both lists). Returns the number actually dropped."""
     start, end = data["trip"]["start"], data["trip"]["end"]
-    kept, dropped = [], 0
+    kept, outside, dropped = [], [], 0
     for ev in data["events"]:
         if ev["date"] < start or ev["date"] > end:
-            p.warn("events", f"dropped '{ev['name']}' on {ev['date']}: outside trip dates {start}..{end}")
-            dropped += 1
+            if ev.get("keep"):
+                outside.append(ev)
+            else:
+                p.warn("events", f"dropped '{ev['name']}' on {ev['date']}: outside trip dates "
+                                 f"{start}..{end} (add 'keep: true' to keep it)")
+                dropped += 1
         else:
             kept.append(ev)
-    kept.sort(key=lambda e: (e["date"], e["time"] or ""))
+    def order(e: dict) -> tuple:
+        return (e["date"], e["time"] or "")
+
+    kept.sort(key=order)
+    outside.sort(key=order)
     data["events"] = kept
+    data["outside"] = outside
     return dropped
+
+
+# --------------------------------------------------------------------------- #
+# Overpass: airport lookup and metro lines (fetched once, then cached on disk)
+# --------------------------------------------------------------------------- #
+
+
+class OverpassError(RuntimeError):
+    """A request to Overpass failed (network, HTTP status, or unreadable JSON)."""
+
+
+def _today() -> str:
+    """Today in UTC, for a cache entry's "fetched" stamp. Never used for trip dates."""
+    return dt.datetime.now(tz=dt.UTC).date().isoformat()
+
+
+def cache_dir() -> Path:
+    """Where fetched Overpass data is kept. Read from the environment every call so a
+    test (or a throwaway build) can point it somewhere else."""
+    env = os.environ.get("TRIPSITE_CACHE_DIR")
+    return Path(env) if env else DEFAULT_CACHE_DIR
+
+
+def cache_read(name: str) -> Any:
+    """Parsed JSON from cache_dir()/name, or None if it isn't there or isn't readable."""
+    path = cache_dir() / name
+    if not is_real_file(path):
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def cache_write(name: str, payload: Any) -> Path:
+    path = cache_dir() / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_file(path, json.dumps(payload, ensure_ascii=False))
+    return path
+
+
+_last_overpass_at = 0.0
+
+
+def overpass_get(ql: str) -> dict:
+    """GET one Overpass QL query and return the parsed JSON.
+
+    Politeness, as Overpass (and Nominatim) ask for: a named User-Agent, at least
+    OVERPASS_MIN_INTERVAL_S between requests from this process, a patient timeout, and a
+    backing-off retry on the two "come back later" statuses (429, 504) only. Every other
+    status raises at once. A build makes at most one request per airport code plus one per
+    city bounding box, and none at all once the cache is warm."""
+    global _last_overpass_at
+    url = f"{OVERPASS_URL}?{urllib.parse.urlencode({'data': ql})}"
+    headers = {"User-Agent": OVERPASS_UA, "Accept": "application/json",
+               "Accept-Encoding": "identity"}
+    last = ""
+    for attempt in range(OVERPASS_RETRIES):
+        wait = OVERPASS_MIN_INTERVAL_S - (time.monotonic() - _last_overpass_at)
+        if wait > 0:
+            time.sleep(wait)
+        _last_overpass_at = time.monotonic()
+        try:
+            req = urllib.request.Request(url, headers=headers, method="GET")
+            with urllib.request.urlopen(req, timeout=OVERPASS_TIMEOUT_S) as resp:
+                body = resp.read()
+            return json.loads(body.decode("utf-8", "replace"))
+        except urllib.error.HTTPError as exc:
+            last = f"HTTP {exc.code} {exc.reason}"
+            if exc.code not in OVERPASS_RETRY_STATUS:
+                raise OverpassError(f"{OVERPASS_URL}: {last}") from exc
+        except (urllib.error.URLError, OSError) as exc:
+            last = f"{type(exc).__name__}: {exc}"
+        except ValueError as exc:  # not JSON: usually an Overpass error page
+            raise OverpassError(f"{OVERPASS_URL}: response was not JSON ({exc})") from exc
+        if attempt + 1 < OVERPASS_RETRIES:
+            time.sleep(OVERPASS_BACKOFF_S[min(attempt, len(OVERPASS_BACKOFF_S) - 1)])
+    raise OverpassError(f"{OVERPASS_URL}: gave up after {OVERPASS_RETRIES} tries ({last})")
+
+
+# --- airports -------------------------------------------------------------- #
+
+
+def airport_query(code: str) -> str:
+    return ('[out:json][timeout:60];('
+            f'node["aeroway"="aerodrome"]["iata"="{code}"];'
+            f'way["aeroway"="aerodrome"]["iata"="{code}"];'
+            f'relation["aeroway"="aerodrome"]["iata"="{code}"];'
+            ');out center tags 5;')
+
+
+def airport_from_overpass(code: str) -> dict | None:
+    """Look up one IATA code as aeroway=aerodrome + iata=<CODE>. None if nothing matched."""
+    raw = overpass_get(airport_query(code))
+    for el in raw.get("elements") or []:
+        centre = el.get("center") or el
+        lat, lon = centre.get("lat"), centre.get("lon")
+        if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+            continue
+        tags = el.get("tags") or {}
+        name = tags.get("name:en") or tags.get("name") or code
+        return {"code": code, "name": str(name), "lat": round(float(lat), METRO_COORD_DP),
+                "lon": round(float(lon), METRO_COORD_DP), "source": "overpass",
+                "fetched": _today()}
+    return None
+
+
+def resolve_airports(data: dict, p: Problems, refresh: bool = False) -> None:
+    """Fill in each airport's lat/lon/name from the trip file, the cache, or Overpass.
+
+    An airport that can't be resolved and has no hand-entered coordinates is an ERROR:
+    a silently missing airport pin is worse than a build that says what to type."""
+    airports = data["trip"].get("airports") or []
+    if not airports:
+        return
+    cached = cache_read(AIRPORT_CACHE_FILE)
+    store: dict[str, dict] = cached if isinstance(cached, dict) else {}
+    dirty = False
+    for air in airports:
+        code = air["code"]
+        if air["lat"] is not None and air["lon"] is not None:
+            air["name"] = air["name"] or code
+            air["source"] = "trip file"
+            continue
+        hit = None if refresh else store.get(code)
+        if not (isinstance(hit, dict) and isinstance(hit.get("lat"), (int, float))
+                and isinstance(hit.get("lon"), (int, float))):
+            hit = None
+        source = "cache"
+        if hit is None:
+            source = "overpass"
+            try:
+                hit = airport_from_overpass(code)
+            except OverpassError as exc:
+                p.err("trip.airport", f"could not reach Overpass to look up {code!r} ({exc}). "
+                                      f"{_airport_hint(code)}")
+                continue
+            if hit is None:
+                p.err("trip.airport", f"no airport with iata={code} in OpenStreetMap "
+                                      f"(aeroway=aerodrome + iata={code}). Check the code, or "
+                                      f"{_airport_hint(code)}")
+                continue
+            store[code] = hit
+            dirty = True
+        air["lat"], air["lon"] = float(hit["lat"]), float(hit["lon"])
+        air["name"] = air["name"] or str(hit.get("name") or code)
+        air["source"] = source
+    if dirty:
+        cache_write(AIRPORT_CACHE_FILE, store)
+
+
+def _airport_hint(code: str) -> str:
+    return ("add the coordinates by hand:\n"
+            f"      airport: {{code: {code}, name: <airport name>, lat: 19.43629, lon: -99.07213}}")
+
+
+# --- metro lines ----------------------------------------------------------- #
+
+
+def bbox_around(lat: float, lon: float, radius_m: float) -> tuple[float, float, float, float]:
+    """(south, west, north, east) for a square about 2*radius_m across, centred on lat/lon.
+    Rounded to 3 dp (~100 m) so a nudged trip.center still hits the same cache entry."""
+    dlat = radius_m / 110540.0
+    dlon = radius_m / (111320.0 * max(0.05, math.cos(math.radians(lat))))
+    south, north = max(-90.0, lat - dlat), min(90.0, lat + dlat)
+    west, east = max(-180.0, lon - dlon), min(180.0, lon + dlon)
+    return tuple(round(v, 3) for v in (south, west, north, east))  # type: ignore[return-value]
+
+
+def metro_query(bbox: tuple[float, float, float, float]) -> str:
+    """Subway route relations whose geometry is inside the bbox, with member geometry
+    inline (`out geom`), so no second pass over ways and nodes is needed."""
+    s, w, n, e = bbox
+    return (f'[out:json][timeout:{OVERPASS_TIMEOUT_S}];'
+            f'relation["type"="route"]["route"="subway"]({s},{w},{n},{e});'
+            'out geom;')
+
+
+def slugify(text: str) -> str:
+    out = re.sub(r"[^a-z0-9]+", "-", (text or "").casefold()).strip("-")
+    return out[:40] or "city"
+
+
+def metro_cache_name(city: str, bbox: tuple[float, float, float, float]) -> str:
+    """Cache file name keyed by city AND bbox: moving trip.center far enough to change
+    the rounded bbox fetches (and keeps) a separate entry."""
+    digest = hashlib.sha256(repr(bbox).encode("utf-8")).hexdigest()[:10]
+    return f"metro-{slugify(city)}-{digest}.json"
+
+
+def _metro_colour(tags: dict) -> str | None:
+    for key in ("colour", "color"):
+        value = str(tags.get(key) or "").strip()
+        if CSS_HEX_RE.match(value):
+            return value.lower()
+        if CSS_HEX_RE.match("#" + value):  # OSM sometimes has a bare "f04e98"
+            return ("#" + value).lower()
+    return None
+
+
+def _ref_sort_key(ref: str) -> tuple:
+    m = re.match(r"^(\d+)(.*)$", ref)
+    return (0, int(m.group(1)), m.group(2)) if m else (1, 0, ref)
+
+
+def metro_lines_from_overpass(raw: Any, tolerance_m: float = METRO_SIMPLIFY_M) -> list[dict]:
+    """Turn an Overpass `out geom` response into one entry per line, ready for the page.
+
+    Grouped by the relation's `ref` (so the two directions of a line become one entry),
+    each member way kept as its own polyline (no stitching: Leaflet draws a list of
+    segments just as well), deduplicated (the return relation reuses the same ways),
+    simplified with Douglas-Peucker and rounded to 5 dp."""
+    groups: dict[str, dict] = {}
+    elements = (raw or {}).get("elements") or [] if isinstance(raw, dict) else []
+    for el in sorted((e for e in elements if isinstance(e, dict)),
+                     key=lambda e: (e.get("type") or "", e.get("id") or 0)):
+        if el.get("type") != "relation":
+            continue
+        tags = el.get("tags") or {}
+        ref = str(tags.get("ref") or "").strip()
+        name = str(tags.get("name") or "").strip()
+        key = ref or name
+        if not key:
+            continue
+        g = groups.setdefault(key, {"ref": ref or name, "names": set(), "colour": None,
+                                    "segs": {}})
+        if name:
+            g["names"].add(name)
+        g["colour"] = g["colour"] or _metro_colour(tags)
+        for member in el.get("members") or []:
+            if not isinstance(member, dict) or member.get("type") != "way":
+                continue
+            # "" is the route itself; platform/stop members are furniture, not track.
+            if str(member.get("role") or "") not in ("", "forward", "backward"):
+                continue
+            pts = []
+            for point in member.get("geometry") or []:
+                if not isinstance(point, dict):
+                    continue
+                lat, lon = point.get("lat"), point.get("lon")
+                if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+                    pts.append((round(float(lat), METRO_COORD_DP),
+                                round(float(lon), METRO_COORD_DP)))
+            pts = [pt for i, pt in enumerate(pts) if i == 0 or pt != pts[i - 1]]
+            if len(pts) < 2:
+                continue
+            forward, back = tuple(pts), tuple(reversed(pts))
+            g["segs"].setdefault(min(forward, back), pts)
+
+    lines = []
+    for i, key in enumerate(sorted(groups, key=_ref_sort_key)):
+        g = groups[key]
+        segs = [[[lat, lon] for lat, lon in simplify_line(pts, tolerance_m)]
+                for _, pts in sorted(g["segs"].items())]
+        segs = [s for s in segs if len(s) >= 2]
+        if not segs:
+            continue
+        lines.append({
+            "ref": g["ref"],
+            "name": min(g["names"]) if g["names"] else g["ref"],
+            "colour": g["colour"] or METRO_FALLBACK_COLOURS[i % len(METRO_FALLBACK_COLOURS)],
+            "segs": segs,
+        })
+    return lines
+
+
+def simplify_line(points: list[tuple[float, float]], tolerance_m: float) -> list[tuple[float, float]]:
+    """Douglas-Peucker on (lat, lon) points, tolerance in metres.
+
+    Distances are measured on a local equirectangular projection (good to well under a
+    metre over a city). The first and last points are always kept, so a simplified line
+    starts and ends exactly where the original did. Iterative: a 10 000-point way would
+    blow the recursion limit."""
+    if len(points) < 3 or tolerance_m <= 0:
+        return list(points)
+    k = math.cos(math.radians(points[0][0]))
+    xy = [(lon * 111320.0 * k, lat * 110540.0) for lat, lon in points]
+    keep = [False] * len(points)
+    keep[0] = keep[-1] = True
+    stack = [(0, len(points) - 1)]
+    while stack:
+        a, b = stack.pop()
+        if b <= a + 1:
+            continue
+        ax, ay = xy[a]
+        dx, dy = xy[b][0] - ax, xy[b][1] - ay
+        den = math.hypot(dx, dy)
+        worst, at = -1.0, -1
+        for i in range(a + 1, b):
+            px, py = xy[i]
+            d = (math.hypot(px - ax, py - ay) if den == 0
+                 else abs(dy * (px - ax) - dx * (py - ay)) / den)
+            if d > worst:
+                worst, at = d, i
+        if worst > tolerance_m:
+            keep[at] = True
+            stack.append((a, at))
+            stack.append((at, b))
+    return [pt for pt, k2 in zip(points, keep) if k2]
+
+
+def metro_point_count(lines: list[dict]) -> int:
+    return sum(len(seg) for line in lines for seg in line["segs"])
+
+
+def resolve_metro(data: dict, p: Problems, refresh: bool = False) -> None:
+    """Fetch (or reuse) the city's subway route relations and store them in data["metro"].
+
+    Only runs when the trip asked for a metro layer (`map: {metro: on|off}`). Anything
+    that goes wrong here is a WARNING and the page is built without the layer: metro
+    lines are a reference overlay, never the point of the page."""
+    want = data.get("map", {}).get("metro")
+    centre = data["trip"].get("center") or {}
+    if want is None or centre.get("lat") is None or centre.get("lon") is None:
+        return
+    bbox = bbox_around(centre["lat"], centre["lon"], METRO_RADIUS_M)
+    name = metro_cache_name(data["trip"].get("city") or "", bbox)
+    cached = None if refresh else cache_read(name)
+    raw = (cached or {}).get("response") if isinstance(cached, dict) else None
+    source = "cache"
+    if raw is None:
+        try:
+            raw = overpass_get(metro_query(bbox))
+        except OverpassError as exc:
+            p.warn("map.metro", f"no metro layer: {exc}. The page is built without it; run again "
+                                "with --refresh-transit when the network is back.")
+            return
+        source = "overpass"
+        cache_write(name, {"meta": {"city": data["trip"].get("city"), "bbox": list(bbox),
+                                    "query": metro_query(bbox), "url": OVERPASS_URL,
+                                    "fetched": _today()},
+                           "response": raw})
+    lines = metro_lines_from_overpass(raw)
+    if not lines:
+        p.warn("map.metro", f"no subway route relations in OpenStreetMap around "
+                            f"{centre['lat']}, {centre['lon']} (bbox {bbox}); the page is built "
+                            "with no metro layer.")
+        return
+    data["metro"] = {"lines": lines, "on": bool(want), "source": source, "cache": name,
+                     "bbox": list(bbox)}
+
+
+def resolve_transit(data: dict, p: Problems, refresh: bool = False) -> None:
+    """The one network-touching step of a build. Everything it fetches is cached on disk,
+    so a second build of the same trip makes no request at all."""
+    resolve_airports(data, p, refresh=refresh)
+    resolve_metro(data, p, refresh=refresh)
 
 
 # --------------------------------------------------------------------------- #
@@ -690,8 +1175,14 @@ def theme_css(theme: dict[str, str]) -> str:
     return ":root {\n" + "\n".join(lines) + "\n}"
 
 
+# Categories whose display name isn't just the capitalised word. Sent to the page script
+# too (page_json -> catLabels), so the panel and the map popup always agree.
+CATEGORY_LABELS = {"daytrip": "Day trip"}
+
+
 def pretty_category(cat: str) -> str:
-    return cat.replace("_", " ").replace("-", " ").capitalize()
+    label = CATEGORY_LABELS.get((cat or "").lower())
+    return label if label else cat.replace("_", " ").replace("-", " ").capitalize()
 
 
 def markdown_to_html(md: str) -> str:
@@ -793,6 +1284,11 @@ def fmt_day(d: dt.date) -> str:
     return f"{d.strftime('%a')} {d.day} {d.strftime('%b')}"
 
 
+def fmt_day_year(d: dt.date, trip_year: int | None) -> str:
+    """fmt_day, plus the year when it isn't the trip's own (a kept event in another year)."""
+    return fmt_day(d) if d.year == trip_year else f"{fmt_day(d)} {d.year}"
+
+
 def fmt_range(start: dt.date, end: dt.date) -> str:
     days = (end - start).days + 1
     if start.year == end.year:
@@ -800,6 +1296,21 @@ def fmt_range(start: dt.date, end: dt.date) -> str:
     else:
         text = f"{fmt_day(start)} {start.year} – {fmt_day(end)} {end.year}"
     return f"{text} · {days} day{'s' if days != 1 else ''}"
+
+
+def ext_link(url: str | None, name: str | None) -> str:
+    """A small '↗' link to `url`, opening in a new tab, for the side lists.
+
+    Always rendered OUTSIDE the checkbox <label> and outside the pan-to-map <button>:
+    inside a <label> a click would toggle the checkbox, and an <a> inside a <button> is
+    invalid HTML. As a plain anchor it stays in the tab order, so it is keyboard
+    reachable. Returns "" when there is no url, so callers can concatenate it blindly."""
+    if not url:
+        return ""
+    label = f"Open the {name or 'place'} website in a new tab"
+    # The leading space keeps the glyph off the name even with no CSS.
+    return (f' <a class="ext" href="{esc(url)}" target="_blank" rel="noopener noreferrer" '
+            f'title="{esc(label)}" aria-label="{esc(label)}"><span aria-hidden="true">↗</span></a>')
 
 
 def render_popular_panel(popular: list[dict]) -> str:
@@ -812,7 +1323,8 @@ def render_popular_panel(popular: list[dict]) -> str:
     for cat in sorted(by_cat):
         items = "\n".join(
             f'      <li><label><input type="checkbox" class="toggle-place" data-id="{esc(pl["id"])}"'
-            f' data-category="{esc(cat)}"{" checked" if pl["default_on"] else ""}> {esc(pl["name"])}</label></li>'
+            f' data-category="{esc(cat)}"{" checked" if pl["default_on"] else ""}> {esc(pl["name"])}</label>'
+            f'{ext_link(pl.get("url"), pl["name"])}</li>'
             for _, pl in by_cat[cat]
         )
         blocks.append(
@@ -830,8 +1342,12 @@ def render_ours_list(ours: list[dict]) -> str:
     items = []
     for place in ours:
         label = f"{place['label']} (approximate area)" if place.get("approx") else place["name"]
+        # A stay under `approximate` has already had its url stripped by apply_privacy, and
+        # under `hidden` it is not in this list at all. This guard keeps that true even if a
+        # later change starts carrying the field through.
+        url = None if place.get("approx") else place.get("url")
         items.append(f'    <li><button type="button" class="linkish focus-place" data-id="{esc(place["id"])}">'
-                     f'{esc(label)}</button></li>')
+                     f'{esc(label)}</button>{ext_link(url, label)}</li>')
     return "  <ul class=\"ours\">\n" + "\n".join(items) + "\n  </ul>"
 
 
@@ -855,15 +1371,42 @@ def render_events(data: dict) -> str:
     return '  <ol class="days">\n' + "\n".join(days) + "\n  </ol>"
 
 
-def _render_event(i: int, ev: dict) -> str:
+OUTSIDE_HEADING = "Just outside your dates"
+
+
+def render_outside(data: dict) -> str:
+    """Events kept with `keep: true` though they fall outside start..end.
+
+    Rendered below the day-by-day list, sorted by date, each showing its own date
+    (weekday included) since there is no day heading above it. Nothing is emitted when
+    no event was kept. The data-event indexes continue the in-range ones, matching the
+    order page_json writes (in-range first, then these)."""
+    outside = data.get("outside") or []
+    if not outside:
+        return ""
+    trip_year = data["trip"]["start"].year if data["trip"].get("start") else None
+    base = len(data["events"])
+    lis = "\n".join(_render_event(base + j, ev, show_date=True, trip_year=trip_year)
+                    for j, ev in enumerate(outside))
+    return ('  <div class="outside">\n'
+            f'    <h3 class="outside-h">{esc(OUTSIDE_HEADING)}</h3>\n'
+            f'      <ul class="events">\n{lis}\n      </ul>\n'
+            '  </div>')
+
+
+def _render_event(i: int, ev: dict, show_date: bool = False, trip_year: int | None = None) -> str:
+    """One event row. `show_date` is set only in the "Just outside your dates" section,
+    where the row carries its own date because no day heading precedes it."""
     badge = "Our plan" if ev["kind"] == "plan" else "City event"
     name = esc(ev["name"])
     if ev["loc"]:
         name = (f'<button type="button" class="linkish event-go" data-event="{i}" '
                 f'title="Show on map">{name} <span aria-hidden="true">⌖</span></button>')
-    bits = [f'<span class="badge">{badge}</span>',
-            f'<span class="time">{esc(ev["time"] or "All day")}</span>',
-            f'<span class="ev-name">{name}</span>']
+    bits = [f'<span class="badge">{badge}</span>']
+    if show_date:
+        bits.append(f'<span class="ev-date">{esc(fmt_day_year(ev["date"], trip_year))}</span>')
+    bits += [f'<span class="time">{esc(ev["time"] or "All day")}</span>',
+             f'<span class="ev-name">{name}{ext_link(ev.get("url"), ev["name"])}</span>']
     if ev["booked"] is True:
         bits.append('<span class="tag">Booked</span>')
     elif ev["booked"] is False:
@@ -871,6 +1414,8 @@ def _render_event(i: int, ev: dict) -> str:
     extra = []
     if ev["notes"]:
         extra.append(f'<span class="notes">{esc(ev["notes"])}</span>')
+    # `url` is the '↗' beside the name above (one affordance per link, same as the places
+    # list); `source` stays here as a worded link. The popup shows both as worded links.
     if ev["source"]:
         extra.append(f'<a class="source" href="{esc(ev["source"])}" rel="noopener noreferrer" '
                      f'target="_blank">Source</a>')
@@ -881,23 +1426,69 @@ def _render_event(i: int, ev: dict) -> str:
 
 PLACE_KEYS = ("group", "id", "name", "category", "lat", "lon", "default_on", "address", "notes", "url",
               "approx", "radius", "label")
+AIRPORT_KEYS = ("code", "name", "lat", "lon")
+# page_json is written with indent=1 for readability, which would be ruinous for thousands
+# of metro coordinates (one array element per line). The lines are spliced in compactly.
+METRO_PLACEHOLDER = "@@metro-lines@@"
+
+
+def metro_lines_json(lines: list[dict]) -> str:
+    """The metro lines as compact JSON: no spaces, coordinates already at 5 dp."""
+    return json.dumps(lines, ensure_ascii=False, separators=(",", ":"))
+
+
+def metro_sidecar_json(lines: list[dict]) -> str:
+    return json.dumps({"lines": lines}, ensure_ascii=False, separators=(",", ":"))
+
+
+def plan_metro_output(data: dict) -> str | None:
+    """Choose inline vs sibling file for the metro geometry, by size.
+
+    Sets data["metro"]["inline"] and ["bytes"]. Returns the text for
+    dist/<slug>/metro.json when the data is too big to embed, else None."""
+    metro = data.get("metro")
+    if not metro:
+        return None
+    size = len(metro_lines_json(metro["lines"]).encode("utf-8"))
+    metro["bytes"] = size
+    metro["inline"] = size <= METRO_INLINE_MAX_BYTES
+    return None if metro["inline"] else metro_sidecar_json(metro["lines"])
 
 
 def page_json(data: dict) -> str:
     """Trip data for the page script. Escaped so it can't close the <script> tag."""
     t = data["trip"]
+    trip_year = t["start"].year if t.get("start") else None
     payload = {
         "trip": {"name": t["name"], "center": t["center"], "zoom": t["zoom"]},
         "maxApproxZoom": APPROX_MAX_ZOOM,
+        "catLabels": CATEGORY_LABELS,
         "places": [{k: pl[k] for k in PLACE_KEYS if pl.get(k) is not None}
                    for pl in data["ours"] + data["popular"]],
+        # In-range events first, then the ones kept outside the dates: the same order
+        # render_events/render_outside number their data-event indexes in.
         "events": [
             {"name": e["name"], "kind": e["kind"], "date": e["date"].isoformat(),
-             "day": fmt_day(e["date"]), "time": e["time"], "loc": e["loc"]}
-            for e in data["events"]
+             "day": fmt_day_year(e["date"], trip_year), "time": e["time"], "loc": e["loc"],
+             "url": e["url"], "source": e["source"]}
+            for e in all_events(data)
         ],
     }
+    airports = t.get("airports") or []
+    if airports:
+        # Airports are reference points, not places: separate list, never in "places",
+        # so nothing that walks places (privacy, category toggles, popups) can pick them up.
+        payload["airports"] = [{k: a[k] for k in AIRPORT_KEYS} for a in airports]
+    metro = data.get("metro")
+    if metro:
+        payload["metro"] = {"on": bool(metro["on"]), "count": len(metro["lines"])}
+        if metro.get("inline", True):
+            payload["metro"]["lines"] = METRO_PLACEHOLDER
+        else:
+            payload["metro"]["url"] = METRO_SIDECAR
     text = json.dumps(payload, ensure_ascii=False, indent=1)
+    if metro and metro.get("inline", True):
+        text = text.replace(json.dumps(METRO_PLACEHOLDER), metro_lines_json(metro["lines"]), 1)
     return text.replace("&", "\\u0026").replace("<", "\\u003c").replace(">", "\\u003e")
 
 
@@ -922,18 +1513,55 @@ LEGEND_ENTRIES = (  # (css class, text); an entry is shown only if its group is 
     ("dot--popular", "Popular places"),
     ("dot--stay", "Where we’re staying (approximate)"),
     ("dot--stay", "Private place (approx.)"),
+    ("dot--airport", "Airport"),
+    ("dot--metro", "Metro lines"),
 )
 
 
 def render_legend(data: dict) -> str:
     approx_kinds = {pl.get("approx_kind") for pl in data["ours"] if pl.get("approx")}
     present = (any(not pl.get("approx") for pl in data["ours"]), bool(data["popular"]),
-               "stay" in approx_kinds, "private" in approx_kinds)
+               "stay" in approx_kinds, "private" in approx_kinds,
+               bool(data["trip"].get("airports")), bool(data.get("metro")))
     items = [f'<span class="dot {cls}"></span> {esc(text)}'
              for (cls, text), on in zip(LEGEND_ENTRIES, present) if on]
     if not items:
         return ""
     return '      <span class="legend">' + "\n      ".join(items) + "</span>"
+
+
+def render_transit_panel(data: dict) -> str:
+    """The "Getting around" block in the side panel: one Airport checkbox (default ON,
+    it is a reference point) and one Metro lines checkbox (default from `map.metro`),
+    plus a compact colour-chip legend of the line numbers. Nothing is emitted when the
+    trip has neither."""
+    airports = data["trip"].get("airports") or []
+    metro = data.get("metro")
+    if not airports and not metro:
+        return ""
+    blocks = ["    <h2>Getting around</h2>"]
+    if airports:
+        items = "\n".join(
+            f'      <li><button type="button" class="linkish focus-airport" data-air="{i}">'
+            f'{esc(a["code"])} — {esc(a["name"])}</button></li>'
+            for i, a in enumerate(airports))
+        blocks.append(
+            '  <fieldset class="cat">\n'
+            '    <legend><label><input type="checkbox" id="toggle-airport" checked> '
+            f'Airport <span class="muted">({len(airports)})</span></label></legend>\n'
+            f'    <ul>\n{items}\n    </ul>\n  </fieldset>')
+    if metro:
+        chips = "\n".join(
+            f'      <li title="{esc(line["name"])}"><span class="mswatch" aria-hidden="true" '
+            f'style="background:{esc(line["colour"])}"></span>{esc(line["ref"])}</li>'
+            for line in metro["lines"])
+        checked = " checked" if metro["on"] else ""
+        blocks.append(
+            '  <fieldset class="cat">\n'
+            f'    <legend><label><input type="checkbox" id="toggle-metro"{checked}> '
+            f'Metro lines <span class="muted">({len(metro["lines"])})</span></label></legend>\n'
+            f'    <ul class="metro-legend">\n{chips}\n    </ul>\n  </fieldset>')
+    return "\n".join(blocks)
 
 
 def render_trip_page(data: dict, body: str, theme: dict[str, str]) -> str:
@@ -971,6 +1599,7 @@ def render_trip_page(data: dict, body: str, theme: dict[str, str]) -> str:
 {render_ours_list(data["ours"])}
     <h2>Popular places</h2>
 {render_popular_panel(data["popular"])}
+{render_transit_panel(data)}
   </aside>
 </section>
 <section class="events-section" aria-labelledby="events-h">
@@ -979,6 +1608,7 @@ def render_trip_page(data: dict, body: str, theme: dict[str, str]) -> str:
     <span class="badge badge--city">City event</span> · Times are local ({esc(t["timezone"])}).
     Click an event with ⌖ to show it on the map.</p>
 {render_events(data)}
+{render_outside(data)}
 </section>
 <section class="about" aria-labelledby="about-h">
   <h2 id="about-h">About this trip</h2>
@@ -1040,6 +1670,9 @@ def render_not_found() -> str:
 ROBOTS_TXT = "User-agent: *\nDisallow: /\n"
 HEADERS_TXT = "/*\n  X-Robots-Tag: noindex, nofollow\n"
 SITE_FILES = ("index.html", "404.html", "robots.txt", "_headers")
+# What may legitimately sit inside dist/<slug>/. metro.json is written only when the metro
+# geometry is too big to embed in the page (see plan_metro_output).
+TRIP_FILES = ("index.html", METRO_SIDECAR)
 
 
 PAGE_CSS = """
@@ -1074,6 +1707,18 @@ a { color: var(--accent); }
 /* white ring behind the dark dashes so the edge shows on dark themes (noir) too */
 .dot--stay { background: color-mix(in srgb, var(--mk-stay) 30%, #fff); border: 2px dashed var(--mk-stay-edge);
              box-shadow: 0 0 0 2px var(--mk-outline); }
+.dot--airport { background: var(--mk-airport); }
+/* the metro swatch is a bar, not a dot: it stands for lines, not a pin */
+.dot--metro { width: 1.6em; height: .35em; border-radius: 2px; border: 0;
+              background: linear-gradient(90deg, #E53935 0 33%, #1E88E5 33% 66%, #43A047 66%); }
+/* airport marker: an amber disc with a white plane, deliberately unlike the round pins */
+.mk-air { background: none; border: 0; }
+.mk-air svg { display: block; filter: drop-shadow(0 0 1px rgba(0, 0, 0, .45)); }
+.metro-legend { display: flex; flex-wrap: wrap; gap: .1rem .5rem; font-size: .85rem;
+                font-variant-numeric: tabular-nums; }
+.metro-legend li { display: flex; align-items: center; gap: .25rem; margin: .1rem 0; }
+.mswatch { display: inline-block; width: .8rem; height: .5rem; border-radius: 2px;
+           box-shadow: 0 0 0 1px rgba(0, 0, 0, .35); }
 .popup hr { border: 0; border-top: 1px solid #ccc; margin: .4rem 0; }
 .panel { background: var(--soft); border-radius: 6px; padding: .25rem 1rem 1rem; max-height: 560px; overflow: auto; }
 .panel h2:first-child { margin-top: .75rem; }
@@ -1085,6 +1730,10 @@ a { color: var(--accent); }
 label { cursor: pointer; }
 .linkish { background: none; border: 0; padding: 0; font: inherit; color: var(--accent);
            text-decoration: underline; cursor: pointer; text-align: left; }
+/* '↗' website link in the side lists; outside the label/button so it only follows the link */
+.ext { text-decoration: none; color: var(--accent); padding: 0 .2rem; font-size: .9em; }
+.ext:hover, .ext:focus { text-decoration: underline; }
+.ext:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 2px; }
 .days { list-style: none; padding: 0; margin: 0; display: grid;
         grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .75rem; }
 .day { border: 1px solid var(--line); border-radius: 6px; padding: .6rem .75rem; }
@@ -1094,7 +1743,12 @@ label { cursor: pointer; }
 .event--city { border-left-color: var(--city); border-left-style: dashed; }
 .ev-main { display: flex; flex-wrap: wrap; gap: .1rem .5rem; align-items: baseline; }
 .ev-name { font-weight: 600; }
+.ev-date { font-size: .9rem; font-weight: 600; }
 .ev-extra { font-size: .9rem; margin-top: .15rem; }
+/* the kept-outside-the-dates block: below the day grid, visibly separate from it */
+.outside { margin-top: 1rem; border-top: 1px dashed var(--line); padding-top: .5rem; }
+.outside-h { font-size: 1rem; margin: 0 0 .25rem; }
+.outside .events { max-width: 640px; }
 .ev-extra .source { margin-left: .4rem; }
 .time { font-variant-numeric: tabular-nums; font-size: .9rem; }
 .badge { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; padding: .05rem .4rem;
@@ -1136,7 +1790,8 @@ PAGE_JS = r"""
     popular: cssVar("--mk-popular", "#1565C0"),
     event: cssVar("--mk-event", "#00695C"),
     stay: cssVar("--mk-stay", "#7B1FA2"),
-    stayEdge: cssVar("--mk-stay-edge", "#2A0A3A")
+    stayEdge: cssVar("--mk-stay-edge", "#2A0A3A"),
+    airport: cssVar("--mk-airport", "#EF6C00")
   };
   var MAX_APPROX_ZOOM = data.maxApproxZoom || 14;
 
@@ -1164,7 +1819,12 @@ PAGE_JS = r"""
   function gmaps(lat, lon) {
     return "https://www.google.com/maps/search/?api=1&query=" + lat + "," + lon;
   }
+  // Category display names come from the page data (build.CATEGORY_LABELS), so the
+  // popup and the side panel can't drift apart.
+  var CAT_LABELS = data.catLabels || {};
   function pretty(cat) {
+    var key = String(cat || "").toLowerCase();
+    if (CAT_LABELS[key]) return CAT_LABELS[key];
     var s = String(cat || "").replace(/[_-]/g, " ");
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
@@ -1265,6 +1925,14 @@ PAGE_JS = r"""
     box.appendChild(el("strong", ev.name));
     box.appendChild(el("span", (ev.kind === "plan" ? "Our plan" : "City event") + " · " + ev.day +
       " · " + (ev.time || "All day"), "cat-label"));
+    // url = the thing itself ("Website"); source = where the info came from ("Source").
+    var links = el("p");
+    if (isHttp(ev.url)) links.appendChild(link(ev.url, "Website"));
+    if (isHttp(ev.source)) {
+      if (links.childNodes.length) links.appendChild(document.createTextNode(" · "));
+      links.appendChild(link(ev.source, "Source"));
+    }
+    if (links.childNodes.length) box.appendChild(links);
     return box;
   }
   function focusPlace(id, ev) {
@@ -1310,14 +1978,113 @@ PAGE_JS = r"""
     focusLayer(eventMarker, false);
   }
 
+  // --- Airports ------------------------------------------------------------
+  // Reference points, never places: their own list in the page data, their own marker
+  // shape (an amber disc with a white plane, not a circle), their own checkbox, and no
+  // part in the category toggles, the privacy rules or the initial view.
+  var PLANE_SVG = '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">' +
+    '<circle cx="12" cy="12" r="10.5" fill="' + C.airport + '" stroke="' + C.outline +
+    '" stroke-width="2"/><g transform="translate(12 12) scale(.58) translate(-12 -12)">' +
+    '<path fill="' + C.outline + '" d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 ' +
+    '3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></g></svg>';
+  var airIcon = L.divIcon({ className: "mk-air", html: PLANE_SVG, iconSize: [26, 26],
+                            iconAnchor: [13, 13], popupAnchor: [0, -13] });
+  function airportPopup(a) {
+    var box = el("div", null, "popup");
+    box.appendChild(el("strong", a.name || a.code));
+    box.appendChild(el("span", "Airport · " + a.code, "cat-label"));
+    var links = el("p");
+    links.appendChild(link(gmaps(a.lat, a.lon), "Open in Google Maps"));
+    box.appendChild(links);
+    return box;
+  }
+  var airports = data.airports || [];
+  var airportLayers = [];
+  var airportGroup = L.layerGroup();
+  var airBox = document.getElementById("toggle-airport");
+  airports.forEach(function (a) {
+    var m = L.marker([a.lat, a.lon], { icon: airIcon, alt: "Airport " + a.code,
+                                       title: a.code + " — " + (a.name || "") });
+    m.bindPopup(airportPopup(a));
+    airportLayers.push(m);
+    airportGroup.addLayer(m);
+  });
+  if (airports.length) {
+    if (!airBox || airBox.checked) airportGroup.addTo(map);   // on by default
+    if (airBox) airBox.addEventListener("change", function () {
+      if (airBox.checked) airportGroup.addTo(map); else map.removeLayer(airportGroup);
+    });
+  }
+  function focusAirport(i) {
+    var m = airportLayers[i];
+    if (!m) return;
+    if (!map.hasLayer(airportGroup)) {
+      if (airBox) airBox.checked = true;
+      airportGroup.addTo(map);
+    }
+    // animate:false on purpose. The airport is usually far outside the current view, and
+    // an animated pan is cut short by the popup's own auto-pan (openPopup nudges the map
+    // relative to wherever the animation has got to), leaving the map stranded part-way.
+    map.setView(m.getLatLng(), Math.max(map.getZoom(), 12), { animate: false });
+    m.openPopup();
+    showMap();
+  }
+
+  // --- Metro lines ---------------------------------------------------------
+  // One checkbox for the whole network. The lines go in their own pane below the
+  // overlay pane, so they never draw over a pin or swallow a click.
+  var metro = data.metro || null;
+  var metroGroup = null, metroDrawn = false, metroPending = false;
+  var metroBox = document.getElementById("toggle-metro");
+  if (metro) {
+    map.createPane("metro");
+    map.getPane("metro").style.zIndex = 380;
+    metroGroup = L.layerGroup();
+  }
+  function drawMetro(lines) {
+    (lines || []).forEach(function (ln) {
+      (ln.segs || []).forEach(function (seg) {
+        L.polyline(seg, { color: ln.colour, weight: 3, opacity: 0.85, interactive: false,
+                          pane: "metro", smoothFactor: 1.5 }).addTo(metroGroup);
+      });
+    });
+    metroDrawn = true;
+  }
+  function showMetro(on) {
+    if (!metroGroup) return;
+    if (!on) { map.removeLayer(metroGroup); return; }
+    if (!metroDrawn && metro.lines) drawMetro(metro.lines);
+    if (metroDrawn) { metroGroup.addTo(map); return; }
+    if (metroPending || !metro.url) return;
+    metroPending = true;   // sibling metro.json: fetched the first time it is switched on
+    fetch(metro.url, { credentials: "same-origin" })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (j) {
+        drawMetro(j.lines);
+        if (!metroBox || metroBox.checked) metroGroup.addTo(map);
+      })
+      .catch(function (err) { console.warn("metro lines not loaded:", err.message); })
+      .then(function () { metroPending = false; });
+  }
+  if (metro && metroBox) {
+    metroBox.addEventListener("change", function () { showMetro(metroBox.checked); });
+    if (metroBox.checked) showMetro(true);
+  }
+
   document.addEventListener("click", function (e) {
-    var t = e.target.closest ? e.target.closest(".event-go, .focus-place") : null;
+    if (!e.target.closest) return;
+    // The '↗' links in the side lists open normally: never pan the map, never toggle a
+    // checkbox (they also sit outside the <label>, so label activation can't fire either).
+    if (e.target.closest("a[href]")) return;
+    var t = e.target.closest(".event-go, .focus-place, .focus-airport");
     if (!t) return;
     if (t.classList.contains("event-go")) focusEvent(Number(t.dataset.event));
+    else if (t.classList.contains("focus-airport")) focusAirport(Number(t.dataset.air));
     else focusPlace(t.dataset.id);
   });
 
-  // Places only (event markers excluded); an approximate area counts as its whole circle.
+  // Places and airports (event markers excluded); an approximate area counts as its whole
+  // circle. Metro lines are deliberately left out: a 30 km network would zoom the trip away.
   document.getElementById("fit-all").addEventListener("click", function () {
     var bounds = null;
     Object.keys(layers).forEach(function (id) {
@@ -1326,6 +2093,12 @@ PAGE_JS = r"""
       var b = placeById[id].approx ? l.getBounds() : L.latLngBounds([l.getLatLng()]);
       bounds = bounds ? bounds.extend(b) : b;
     });
+    if (map.hasLayer(airportGroup)) {
+      airportLayers.forEach(function (m) {
+        var b = L.latLngBounds([m.getLatLng()]);
+        bounds = bounds ? bounds.extend(b) : b;
+      });
+    }
     if (bounds) map.fitBounds(bounds, { padding: [30, 30], maxZoom: MAX_APPROX_ZOOM });
   });
 })();
@@ -1425,7 +2198,7 @@ def plan_out_dir(out_dir: Path, slugs: set[str]) -> tuple[list[Path], list[str]]
                 problems.append(f"{f} is a symlink, so it {not_ours} (never followed or replaced)")
             if links:
                 continue
-            if all(is_real_file(f) and f.name in ("index.html",) + JUNK_FILES for f in inner):
+            if all(is_real_file(f) and f.name in TRIP_FILES + JUNK_FILES for f in inner):
                 if entry.name in slugs:  # rebuilt now: its index.html is overwritten
                     remove.extend(f for f in inner if f.name in JUNK_FILES)
                     continue
@@ -1456,6 +2229,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="trip profile(s), e.g. trips/mexico-city-2026.md or trips/*.md")
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT, help=f"output folder (default: {DEFAULT_OUT})")
     ap.add_argument("--dry-run", action="store_true", help="validate and report, write nothing")
+    ap.add_argument("--refresh-transit", action="store_true",
+                    help="re-fetch the airport coordinates and metro lines from Overpass, "
+                         f"ignoring (and replacing) what is cached in {DEFAULT_CACHE_DIR}")
     args = ap.parse_args(argv)
 
     # 1. Validate every trip; nothing is written unless all of them pass.
@@ -1468,6 +2244,9 @@ def main(argv: list[str] | None = None) -> int:
         if not p.errors:
             dropped = filter_events(data, p)
             apply_privacy(data, body, p)
+            # The only step that may touch the network, and only for a trip that asked
+            # for an airport or a metro layer. Everything it fetches is cached on disk.
+            resolve_transit(data, p, refresh=args.refresh_transit)
             slug = data["trip"]["slug"]
             if slug in slug_owner:
                 p.err("trip.slug", f"{slug!r} is also used by {slug_owner[slug]}")
@@ -1486,12 +2265,26 @@ def main(argv: list[str] | None = None) -> int:
 
     # 2. Render and run the leak scan before touching the output folder.
     pages: dict[str, str] = {}
+    sidecars: dict[str, str | None] = {}
     for path, data, body, dropped in trips:
         t = data["trip"]
         print(f"trip:    {t['name']} ({t['start']} → {t['end']}), theme {t['theme']}, slug {t['slug']}")
         print(f"places:  {len(data['ours'])} ours (stay: {data['privacy']['hotel_display']}), "
               f"{len(data['popular'])} popular")
-        print(f"events:  {len(data['events'])} kept, {dropped} dropped (outside trip dates)")
+        for air in t.get("airports") or []:
+            print(f"airport: {air['code']} {air['name']} at {air['lat']}, {air['lon']} "
+                  f"(from {air['source']})")
+        sidecars[t["slug"]] = plan_metro_output(data)
+        metro = data.get("metro")
+        if metro:
+            where = "embedded in the page" if metro["inline"] else f"written to {METRO_SIDECAR}"
+            print(f"metro:   {len(metro['lines'])} line(s), {metro_point_count(metro['lines'])} "
+                  f"points, {metro['bytes'] / 1024:.0f} KB {where}, default "
+                  f"{'on' if metro['on'] else 'off'} (from {metro['source']}: {metro['cache']})")
+        print(f"events:  {len(data['events'])} kept, {len(data['outside'])} kept outside the "
+              f"dates (keep: true), {dropped} dropped (outside trip dates)")
+        for ev in data["outside"]:
+            print(f"         kept outside the dates: '{ev['name']}' on {ev['date']}")
         page = render_trip_page(data, body, load_theme(t["theme"]))
         leaks = scan_for_leaks(page, data.get("_private_stays", []))
         if leaks:
@@ -1529,12 +2322,20 @@ def main(argv: list[str] | None = None) -> int:
     for slug, page in pages.items():
         (out_dir / slug).mkdir(parents=True, exist_ok=True)
         write_file(out_dir / slug / "index.html", page)
+        side = out_dir / slug / METRO_SIDECAR
+        if sidecars.get(slug) is not None:
+            write_file(side, sidecars[slug] or "")
+        elif is_real_file(side):
+            side.unlink()  # a previous build wrote one; this page embeds its metro data
     write_file(out_dir / "index.html", render_root_index())
     write_file(out_dir / "404.html", render_not_found())
     write_file(out_dir / "robots.txt", ROBOTS_TXT)
     write_file(out_dir / "_headers", HEADERS_TXT)
     for slug in sorted(pages):
         print(f"wrote:   {out_dir / slug / 'index.html'}")
+        if sidecars.get(slug) is not None:
+            print(f"         {out_dir / slug / METRO_SIDECAR}  (metro geometry, loaded on demand; "
+                  "it must be uploaded with the page)")
     for name in SITE_FILES:
         print(f"         {out_dir / name}")
     if stale:
