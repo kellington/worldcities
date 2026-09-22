@@ -8,39 +8,26 @@
 - [ ] **Gate 0e 24-hour mail re-test** — earliest **2026-09-22 19:10 MDT**. Gmail →
       `rob@worldcities.ca`, save the `.eml` under a new filename, then:
       `grep -ic '^Received:'` → 2 · a Zoho host · no hop between Gmail and Zoho.
-      **Nothing else runs until this passes.**
-- [ ] **Decide `hotel_display`** — `exact` ships with no rebuild (`dist/` is already an
-      exact-mode build); `approximate` or `hidden` needs an edit plus a rebuild after it.
+      Confirmation only now — the site is already live.
+- [ ] **Send Lucie the link and confirm she logs in.** Pearl's two-text draft is in Rob's
+      clipboard / diary. Her successful login is the only proof her allowlist entry is right.
 
 ## Next
 
-Ordered. Cards in `tripsite/README.md`; do not improvise around them.
-
-- [ ] **Gate 3** — attach `worldcities.ca` to the Pages project. Run its verify from a
-      resolver that has switched (`8.8.8.8` had, `1.1.1.1` and `9.9.9.9` had not). Check the
-      three Zoho MX are untouched in the zone diff against `project/secrets/cf-zone-2026-09-21.txt`.
-- [ ] **Gate 4** — Access app. Path `mexico-city-2026-6b9638`, no leading/trailing slash, no
-      wildcard. One-time PIN only, instant auth on, session 1 month. Allowlist
-      `rob.kellington@gmail.com` and `lucie.beauchamp2020@gmail.com`. Verify: five curls,
-      each a 302 to `worldcities-trips.cloudflareaccess.com` or a 404 — **never a 200**.
-- [ ] **Gate 5** — rebuild all live trips in one run, `find dist -type f | sort` (expect 5
-      files, no `.DS_Store`), then `npx wrangler pages deploy dist --project-name worldcities
-      --branch main`. Then the private-browser login test.
-- [ ] **Send Lucie the link** with the login note: the PIN comes from
-      `noreply@notify.cloudflare.com`, often lands in spam, expires in 10 minutes, and the
-      page says "code emailed" even for addresses that aren't on the list.
+- [ ] **Test the live page on a real iPhone** — map drag vs page scroll, the small ↗ link
+      targets. Never done on hardware, and the page will be used on phones in Mexico City.
+- [ ] **Amend Gate 4's verify** (via Gage): before Gate 5, only a 302 to the Access login
+      passes — a 404 proves nothing when the slug isn't uploaded. Also strike the
+      "after the 24-hour re-test" preconditions on Gates 3/4/5 as historical.
 - [ ] **Gate 0f** — decide `www`. Recommendation: redirect to apex. Never CNAME it to the
       Pages project.
+- [ ] **Close the milestone** once 0e re-test and Lucie's login pass — rewrite PLAN.md.
 
 ## Later
 
-- [ ] Test the live page on a real iPhone — map drag vs page scroll, the small ↗ link
-      targets. Never done on hardware.
-- [ ] Check whether "Enable access policy" appeared in the Pages project settings now that
-      Zero Trust exists.
-- [ ] Revisit Access on `*.pages.dev` as a second lock — only after Gate 5 passes.
-- [ ] Gate 0g — delete the Route 53 hosted zone `Z0944732VRZ4NUBNE0FL`, but not before mail
-      has been stable on Cloudflare for a couple of weeks. It is the rollback.
+- [ ] Revisit Access on `*.pages.dev` as a second lock — Gate 5 has passed, so this is now open.
+- [ ] Gate 0g — delete the Route 53 hosted zone `Z0944732VRZ4NUBNE0FL`, not before
+      ~2026-10-05 (two weeks of stable mail on Cloudflare). It is the rollback.
 - [ ] Clean up the orphaned `skyideas.com` Route 53 zone (`Z08901851VA0TTXNMTFCZ`, ~$0.50/mo).
       Separate job, separate domain.
 - [ ] Second trip live alongside the first — the upload replaces the whole site, so every
@@ -53,6 +40,13 @@ Ordered. Cards in `tripsite/README.md`; do not improvise around them.
 - [ ] Consider SPF/DKIM/DMARC on `worldcities.ca` if Rob ever sends from that address.
 
 ## Done (recent)
+
+- [x] **Mexico City trip live** at `worldcities.ca/mexico-city-2026-6b9638/` (2026-09-22)
+- [x] Gate 5 — deploy `b36c4fc1`, all hostnames verified, Rob's login passed
+- [x] Gate 4 — Access app + `trip-mates` policy, five paths → 302
+- [x] Gate 3 — custom domain attached, MX diff clean
+- [x] `hotel_display` decided: `exact`
+- [x] "Enable access policy" re-checked after Zero Trust — still absent
 
 - [x] tripsite v0 built, verified, 164 tests (2026-09-21, earlier session)
 - [x] Renamed maptoposter → worldcities
