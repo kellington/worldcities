@@ -4,6 +4,6 @@ tagline: Map posters + trip sites. A personal fork of originalankur/maptoposter 
 group: Utilities
 profile: Utility
 priority: 12
-status: Active — tripsite/ v0 shipped 2026-09-21 (CLI builds a static trip site from a trip profile; 164 tests). Project renamed maptoposter -> worldcities. Mexico City 2026 trip site builds locally; nothing deployed yet — Cloudflare Pages/Access gates in tripsite/README.md are next. Poster CLI unchanged and still supported.
+status: Active — deploying. tripsite/ v0 shipped 2026-09-21 (164 tests). worldcities.ca migrated off AWS Route 53 to Cloudflare 2026-09-21 19:10 MDT; zone Active, Zoho mail verified through the cutover. Pages project live serving the neutral placeholder only; *.pages.dev locked down. Zero Trust onboarded (team worldcities-trips, One-time PIN). Gates 2, 3b, 0a-0d, 0e, 1 PASSED. Blocked on the 24-hour mail re-test (earliest 2026-09-22 19:10 MDT), then Gates 3-5 put the Mexico City trip live for two invitees. Poster CLI unchanged and still supported.
 generated: 2026-09-21
 ---

@@ -36,3 +36,9 @@ htmlcov/
 
 # Trip profiles (private: dates, hotel addresses). Repo is public.
 trips/
+
+# Local-only working files (DNS exports, backups). Never committed.
+project/secrets/
+
+# Wrangler local state (created by `wrangler pages deploy`)
+.wrangler/
