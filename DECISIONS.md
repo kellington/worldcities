@@ -68,7 +68,7 @@ possibly on a dead SIM in Mexico City.
 **Trade-off:** A longer cookie life if a device is lost. Acceptable for a page showing a
 hotel and a list of restaurants.
 **Impact:** Gate 4 allowlists `rob.kellington@gmail.com` and
-`lucie.beauchamp2020@gmail.com`. Rob's own address must stay on it or he locks himself out.
+`Lucie's Gmail (project/secrets/access-allowlist.txt)`. Rob's own address must stay on it or he locks himself out.
 
 ## [2026-09-21] — Accept Zero Trust Free's $0 billing activation
 
@@ -126,3 +126,42 @@ check passing on a *dead* site, because an empty body scores 0 on every content 
 verdict at a moment whose documented reaction was a rollback. Pass criteria are now written
 as "say what you're looking for, give the observed value as an example, prefer a structural
 test over a string match," and the remaining unrun gates are assumed to carry more of these.
+
+## [2026-09-22] — Run Gates 3–5 ahead of the 24-hour mail re-test
+
+**Decision:** Rob overrode the sequencing ruling that held Gates 3, 4 and 5 behind the
+Gate 0e 24-hour re-test, and ran them from ~15:50 MDT — about 3h20m before the re-test
+window opened.
+**Why:** The ruling's measured reason was stale resolvers making Gate 3's verify fetch the
+old S3 page and trigger a false rollback. At 15:45, `1.1.1.1`, `8.8.8.8`, `9.9.9.9`, OpenDNS
+and Rob's ISP resolver all returned the Cloudflare delegation and no S3 IPs — the reason was
+gone. Mail risk was near zero: the Route 53 zone still serves identical MX, and Gates 3–5
+touch no MX (Gate 3's MX diff proved it).
+**Trade-off:** An unseen resolver could still have been stale — worst case a few hours of
+the site not resolving for someone. No leak path: Gate 4's Access app was in place before
+Gate 5 uploaded the trip.
+**Impact:** The trip went live the same afternoon. The 0e re-test still runs, as
+confirmation rather than blocker.
+
+## [2026-09-22] — hotel_display = exact for the Mexico City trip
+
+**Decision:** The live page shows the stay's name, address and Google Maps link.
+**Why:** Two-person allowlist behind email OTP, revocable per address; an exact marker is a
+materially more useful page on the ground.
+**Trade-off:** A lost, unlocked device with a live session (up to 730h) shows where Rob and
+Lucie are staying. Mitigation: remove the address from `trip-mates` **and** revoke the
+user's sessions.
+**Impact:** No mode change, so no rebuild was required; Gate 5 shipped a fresh build
+(2026-09-22 16:11) that post-dates the trip file.
+
+## [2026-09-22] — Defect 6: Gate 4's verify accepted a 404 as a pass
+
+**Decision:** Before a slug is uploaded, Gate 4 passes only on a 302 to
+`<team>.cloudflareaccess.com`. A 404 is acceptable only after upload.
+**Why:** Pre-upload, the slug 404s whether or not Access is attached, so a 404 cannot
+distinguish a working app from a missing one. Observed: all five paths returned 404 for 2+
+minutes after the app was saved; the 302s appeared only after Rob reopened the app. Taking
+the card literally would have run Gate 5 and published the trip with no login. Same shape as
+defect 5 (a check satisfied by a broken state).
+**Impact:** Card amendment routed to Gage (TASKS, Next). General rule: a verify that also
+passes when the feature is absent is not a verify.

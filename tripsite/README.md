@@ -2081,7 +2081,7 @@ Preconditions:
     at this tier — the alternative is not a cheaper gate, it is a different project. Stop and
     hand it back to Alice rather than improvising an unprotected upload.
   - **SEAT ARITHMETIC, so nobody wonders whether two people will blow a limit:**
-      50 seats on Free · **2 in use** (rob.kellington@gmail.com, lucie.beauchamp2020@gmail.com)
+      50 seats on Free · **2 in use** (rob.kellington@gmail.com, Lucie's Gmail (project/secrets/access-allowlist.txt))
       · 48 spare.
     **A seat is per USER, not per login.** Rob logging in on a phone, a laptop and a borrowed
     tablet is **one seat**, not three; logging in again next week is still one seat. So the
@@ -2136,7 +2136,7 @@ Do exactly (dashboard):
         string — Access matches an entry against the whole address):**
 
             rob.kellington@gmail.com
-            lucie.beauchamp2020@gmail.com
+            Lucie's Gmail (project/secrets/access-allowlist.txt)
 
           That is the whole allowlist. **Two entries, nothing else, no domain-wide rule, no
           "anyone with a link".** Type them carefully: a typo here does not error, it silently
@@ -2464,7 +2464,7 @@ post-flip 0e  ──►  Gate 1  ──┐
 | **Gate 1** — confirm Active, export the zone | post-flip 0e | Read-only. Two dashboard steps: read the status word, take the export. **Do not re-verify the delegation/MX/apex — already measured, see the post-flip readings table.** The export is Gate 3's mail-safety baseline and Gate 3 cannot run without it. |
 | **Gate 0e (24 h re-test)** | the clock | Earliest 2026-09-22 19:10 local. |
 | **Gate 3** — attach `worldcities.ca` to the Pages project | 24 h re-test + Gate 1 | Verify is now ordered V1→V4 and **must** be run in order: authoritative dig first, resolver check second, content curls third, MX diff fourth. A curl failure while your resolver still holds the S3 IPs is **not** a rollback trigger. |
-| **Gate 4** — Zero Trust + one Access app | Gate 3 · **Rob's billing OK** | Allowlist is filled in: **two addresses**, `rob.kellington@gmail.com` + `lucie.beauchamp2020@gmail.com`, one per entry. 2 of 50 seats. Billing OK **not yet given** — the gate does not start without it. Also: re-check "Enable access policy" right after onboarding. |
+| **Gate 4** — Zero Trust + one Access app | Gate 3 · **Rob's billing OK** | Allowlist is filled in: **two addresses**, `rob.kellington@gmail.com` + `Lucie's Gmail (project/secrets/access-allowlist.txt)`, one per entry. 2 of 50 seats. Billing OK **not yet given** — the gate does not start without it. Also: re-check "Enable access policy" right after onboarding. |
 | **Gate 0f** — decide and implement `www` | Gate 3 | Recommendation: redirect to apex. Optional; skipping it costs only UX. `www` is currently NXDOMAIN at Cloudflare. |
 | **Gate 5** — upload the real site | Gate 4 · **Rob's `hotel_display` decision** | The step that makes a trip page reachable by other people. One slug in `dist/`, so exactly one Access app must be passing. |
 

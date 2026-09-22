@@ -1,122 +1,102 @@
 # State
 
-*Last updated: 2026-09-21 20:30 MDT*
+*Last updated: 2026-09-22 16:30 MDT*
 
 ## Summary
 
-`worldcities.ca` has been migrated off AWS Route 53 onto Cloudflare and the zone is
-**Active**. Zoho mail survived the cutover and has been verified once after it. The Pages
-project is live serving only a neutral placeholder; every `*.pages.dev` hostname 301s to
-`worldcities.ca`. **Nine gates have passed. One thing blocks the rest: a mail re-test that
-cannot run before 2026-09-22 19:10 MDT**, 24 hours after the nameserver flip. After it,
-Gates 3 → 4 → 5 put the Mexico City trip live for Rob and Lucie.
+**The Mexico City trip is live** at `https://worldcities.ca/mexico-city-2026-6b9638/`, behind
+Cloudflare Access (email PIN, allowlist Rob + Lucie). Rob has logged in and the page renders
+with map tiles. Every other hostname — `worldcities.pages.dev`, both deployment hashes —
+301s to `worldcities.ca`, where Access applies. The root serves the neutral placeholder.
+Mail on `rob@worldcities.ca` is untouched by any of it (MX diff clean).
 
-Nothing is half-applied. If work stopped here permanently, the only oddity is that
-`worldcities.ca` resolves to nothing — the old S3 placeholder is gone by design.
+Gates 3, 4 and 5 ran **ahead of** the Gate 0e 24-hour mail re-test, on Rob's call — the
+measured reason for the block was gone (see DECISIONS.md, 2026-09-22). The re-test itself
+**is still owed**: earliest 2026-09-22 19:10 MDT. It is now a confirmation, not a blocker.
 
 ## What's working
 
-- **`tripsite/` v0** — `uv run tripsite/build.py trips/mexico-city-2026.md` exits 0.
-  164 tests pass (7 expected failures = accepted limits, documented in `tripsite/README.md`).
-- **Gate 2** — Pages project `worldcities`, production deploy, placeholder only.
-  `grep -c "World Cities"` → 2 · `robots.txt: Disallow: /` · `x-robots-tag: noindex, nofollow`
-  · `/no-such-page/` → real 404, not SPA mode. Deployment hash `2ca4e8dc`.
-- **Gate 3b** — Bulk Redirect list `worldcities_pages_dev` (1 of 5 account lists). Verified:
-  bare, `/any/path?x=1` with path *and* query preserved, the hash hostname, and the real leak
-  vector `2ca4e8dc.worldcities.pages.dev/<slug>/` → 301 to `worldcities.ca/<slug>/`.
-- **Gates 0a–0d, 1 — the migration.** Registry flipped 2026-09-21 19:10:10 MDT to
-  `bella`/`gabriel.ns.cloudflare.com`. Cloudflare answers authoritatively. Zone Active.
-  Zone holds exactly SOA + NS×2 + MX×3 — nothing else.
-- **Mail.** Three Zoho MX unchanged across `1.1.1.1`, `8.8.8.8`, `9.9.9.9`, OpenDNS.
-  Post-flip inbound test passed 56 min after the flip: 2 Received hops, accepted by
-  `mx.zohomail.com`, sub-second.
-- **Zero Trust** — onboarded, Free (2 of 50 seats), team **`worldcities-trips`**, One-time PIN
-  added as the only identity provider, inactive-user removal at 3 months.
-- **Backups** — `~/Backups/worldcities-dns/` holds the Route 53 original, the 0c import and
-  the Gate 1 baseline, checksummed against `project/secrets/`.
+- **Live trip page** — Gate 5 deploy `b36c4fc1`, wrangler 4.136.3, `--branch main`.
+  `dist/` = exactly 5 files, fresh build 2026-09-22 16:11 (exit 0), post-dates the trip file
+  (2026-09-21 11:51) → **`hotel_display: exact`**, Rob's decision this session.
+  Verified: apex `/<slug>/` → 302 to `worldcities-trips.cloudflareaccess.com`;
+  `worldcities.pages.dev/<slug>/`, `b36c4fc1.…/<slug>/`, `2ca4e8dc.…/<slug>/` → 301 to
+  `worldcities.ca/<slug>/`; root lists no slug; `x-robots-tag: noindex, nofollow`;
+  unauthenticated follow of the trip URL returns no trip content. **Rob's private-window
+  login passed** (Chrome, `rob.kellington@gmail.com`).
+- **Gate 4 — Access app** `trip mexico-city-2026-6b9638`, destination
+  `worldcities.ca/mexico-city-2026-6b9638`, policy `trip-mates` (Allow; two separate email
+  entries `rob.kellington@gmail.com`, `Lucie's Gmail (project/secrets/access-allowlist.txt)`, read back from the
+  saved policy JSON), login method required = One-time PIN, session `730h`. All five verify
+  paths (incl. uppercase) → 302 to the Access login.
+- **Gate 3 — custom domain.** Apex = proxied CNAME `worldcities.ca → worldcities.pages.dev`
+  (the only zone change). Authoritative `bella` returns Cloudflare A `104.21.94.173`,
+  `172.67.138.210`. Curls: 200, "World Cities" ×2, "Amazon S3" 0, `AmazonS3` header 0.
+  MX before/after diff empty, 3 and 3 lines; three Zoho MX from `1.1.1.1` and `8.8.8.8`.
+  Export: `project/secrets/cf-zone-2026-09-22.txt`.
+- **Resolvers** — as of 15:45, `1.1.1.1`, `8.8.8.8`, `9.9.9.9`, OpenDNS and Rob's ISP
+  resolver all on the Cloudflare delegation. The split-resolver window is closed.
+- **Earlier and unchanged:** Gates 0a–0d, 1, 2, 3b; Zero Trust team `worldcities-trips`;
+  DNS backups in `~/Backups/worldcities-dns/`; `tripsite/` 164 tests.
 
 ## In progress
 
-- **Gate 0e 24-hour re-test — the only blocker.** Earliest **2026-09-22 19:10 MDT**.
-  Send Gmail → `rob@worldcities.ca`, save the `.eml` to a *new* filename, then check:
-  `grep -ic '^Received:'` → 2 · a Zoho host (`mx*.zoho.com` **or** `mx*.zohomail.com`) ·
-  no hop between Gmail and Zoho. Why it matters: last night's pass could have been served
-  by a resolver still holding the AWS delegation; tomorrow's can only have gone via
-  Cloudflare.
-- **Then Gate 3** → attach the custom domain. **Gate 4** → Access app, path
-  `mexico-city-2026-6b9638`, One-time PIN, session 1 month, allowlist
-  `rob.kellington@gmail.com` + `lucie.beauchamp2020@gmail.com`. **Gate 5** → upload `dist/`.
-- **Undecided and blocking Gate 5: `hotel_display`.** `trips/mexico-city-2026.md:23` says
-  `exact`, and `dist/` is provably an exact-mode build — so **`exact` ships with no rebuild**.
-  Either other value needs an edit plus a rebuild that post-dates it.
+- **Gate 0e 24-hour re-test** — earliest **2026-09-22 19:10 MDT**. Gmail →
+  `rob@worldcities.ca`, save "Show original" `.eml` to a *new* filename, then:
+  `grep -ic '^Received:'` → 2 · a Zoho host (`mx*.zoho.com` or `mx*.zohomail.com`) · no hop
+  between Gmail and Zoho. Low risk (Route 53 still serves identical MX), but required.
+- **Lucie's link** — message drafted by Pearl (two-text version), copied by Rob. **Not yet
+  confirmed sent, and Lucie has not yet logged in.** Her login is the only proof her
+  allowlist entry has no typo.
 
 ## Known issues
 
-- **The split-resolver window is live.** At 19:40 on 2026-09-21, `1.1.1.1` and `9.9.9.9`
-  still returned the old eight S3 A records; `8.8.8.8` and OpenDNS had switched. Expect
-  disagreement for up to 24 h. **Do not run Gate 3's verify from a stale resolver** — it
-  would report the old S3 page as a failure and the documented reaction is rolling back a
-  correct change.
-- **`worldcities.ca` resolves to nothing** (apex is NODATA — the name exists and carries MX).
-  Correct until Gate 3. Don't read it as breakage.
-- **Gate cards carry defects; running them is how they surface.** Five found today, all
-  listed in DECISIONS.md. The remaining unrun gates should be assumed to carry more.
-- **`www.worldcities.ca` is dark** and will stay so until Gate 0f. Must never CNAME to the
-  Pages project — Gate 4's Access app covers `worldcities.ca` only, so `www/<slug>/` would
-  serve the trip with no login.
-- **No SPF/DKIM/DMARC on `worldcities.ca`** — pre-existing, out of scope, but real if Rob
-  ever sends from that address rather than just receiving.
-- **Orphaned Route 53 hosted zone for `skyideas.com`** (`Z08901851VA0TTXNMTFCZ`, 7 records) —
-  Cloudflare is authoritative for that domain, so the zone does nothing but cost ~$0.50/mo.
-  Out of scope; **do not touch it while working in the Route 53 console.**
+- **Gate 4's verify accepts a 404 as a pass — which is a false pass before Gate 5.** With the
+  trip not yet uploaded, the slug 404s whether or not Access is attached. On 2026-09-22 the
+  five curls returned 404 for 2+ minutes after the app was saved; the 302s appeared only after
+  Rob reopened the app. Card not yet amended — see TASKS.
+- **Gate 3's card still says "Earliest 19:10 / 24-hour re-test PASSED"** as a precondition,
+  and Gates 4/5 inherit it. Now historical for this trip; amend when the cards are next touched.
+- **`www.worldcities.ca` is dark** until Gate 0f. Must never CNAME to the Pages project —
+  Access covers `worldcities.ca` only.
+- **"Enable access policy" is still absent** from Pages › Settings after Zero Trust
+  onboarding. Hypothesis ruled out; Gate 3b's redirect covers those hostnames regardless.
+- **No SPF/DKIM/DMARC on `worldcities.ca`** — pre-existing, out of scope.
+- **Orphaned Route 53 zone `skyideas.com`** (`Z08901851VA0TTXNMTFCZ`) — do not touch while
+  working in Route 53.
 - **Untested on real phone hardware** — map drag vs page scroll, small ↗ link targets.
+  Now more pressing: the page is live and will be used on phones in Mexico City.
 
 ## Environment / setup
 
-Stable commands live in README.md and `tripsite/README.md`. Session-specific only:
-
 ```
-branch: vscode  (main and vscode both at c919018; --branch main is REQUIRED on every
-                 wrangler deploy or it makes a preview deploy from "vscode")
-aws:    every route53 command needs --profile rob, else InvalidClientTokenId
-zsh:    interactive_comments is off — pasted "#" lines error harmlessly.
-        `setopt interactive_comments` per session, or paste command lines only
-wrangler: unpinned via npx; 4.136.1 today. Expect the git-dirty warning, it's harmless
+branch: vscode  (--branch main is REQUIRED on every wrangler pages deploy)
+aws:    every route53 command needs --profile rob
+wrangler: unpinned via npx; 4.136.3 today. Git-dirty warning is harmless
+live deploy: b36c4fc1   (previous: 2ca4e8dc, placeholder only)
+Access app:  trip mexico-city-2026-6b9638  · team worldcities-trips
 zone in scope:  Z0944732VRZ4NUBNE0FL  (worldcities.ca)
 NEVER touch:    Z08901851VA0TTXNMTFCZ  (skyideas.com, orphan)
 ```
 
-**Working-copy runbooks** (Alice's pages, derived from `tripsite/README.md`, which stays
-authoritative — if they disagree, follow the README):
-
-- Session A (done): https://claude.ai/artifact/G5WgzsnmSece74pRfhH7rn
-- Session B/C: https://claude.ai/artifact/Cs5TrB4frM2o6FSjh7Zvy2
+Working-copy runbook (Session B/C): https://claude.ai/artifact/Cs5TrB4frM2o6FSjh7Zvy2 —
+`tripsite/README.md` stays authoritative.
 
 ## Open questions
 
-- **`hotel_display` for the live page.** Alice recommends `exact`: two people behind email
-  OTP, revocable by removing an address, and an exact marker with address and Maps link is a
-  materially more useful page on the ground. Rob hasn't decided.
-- **Does "Enable access policy" exist now?** It was absent from the Pages project settings in
-  Session A. Hypothesis was that it needs Zero Trust onboarded — Zero Trust now exists, so
-  the check is cheap. Either answer is fine; Gate 3b already covers those hostnames.
-- **Can a self-hosted Access app take a `*.pages.dev` hostname?** External advice says yes;
-  Rex's research says a self-hosted app needs an active zone in the account. Unresolved, and
-  deliberately declined for now — revisit only after Gate 5 passes.
-- **When to delete the Route 53 hosted zone** (Gate 0g). Not before mail has been stable on
-  Cloudflare for a couple of weeks. It is the rollback.
+- **PLAN.md milestone ("First live trip site") is effectively met** — remaining: the 0e
+  re-test and Lucie's first login. Close the milestone and rewrite PLAN.md once both pass.
+- **Can a self-hosted Access app take a `*.pages.dev` hostname?** Deferred until after
+  Gate 5 — which has now passed, so it is revisitable. Low priority; 3b covers it.
+- **When to delete the Route 53 hosted zone** (Gate 0g) — not before ~2026-10-05 (two weeks
+  of stable mail on Cloudflare). It is the rollback.
 
 ## Resolved this session
 
-- Whether the trip site needs Cloudflare at all — yes, for login; S3 can serve static files
-  but cannot authenticate, and would be http-only without CloudFront.
-- Whether Rob is near a paid Cloudflare tier — no, 1–3 orders of magnitude inside every
-  Free limit; nearest is Zero Trust seats at 2 of 50.
-- Whether the Zoho mailbox is live — yes, `rob@worldcities.ca`, with a human behind it.
-- Whether Bulk Redirects is a Free feature — yes, 5 lists / 15 rules / 10,000 redirects,
-  account-wide, and the account had 0 of 5 used.
-- What actually governs the cutover — the parent `.ca` delegation TTL of 86400, measured at a
-  `.ca` TLD server. Not the MX TTL (already 300) and not the in-zone NS TTL.
+- `hotel_display` → **`exact`** (Rob, 2026-09-22).
+- Whether the 24-hour re-test must block Gates 3–5 — no, once every resolver measurably
+  switched (DECISIONS.md, 2026-09-22).
+- Whether "Enable access policy" appears after Zero Trust onboarding — it does not.
 
 ---
 
