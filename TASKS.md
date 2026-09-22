@@ -16,18 +16,23 @@
 
 - [ ] **Test the live page on a real iPhone** — map drag vs page scroll, the small ↗ link
       targets. Never done on hardware, and the page will be used on phones in Mexico City.
-- [ ] **Amend Gate 4's verify** (via Gage): before Gate 5, only a 302 to the Access login
-      passes — a 404 proves nothing when the slug isn't uploaded. Also strike the
-      "after the 24-hour re-test" preconditions on Gates 3/4/5 as historical.
-- [ ] **Gate 0f** — decide `www`. Recommendation: redirect to apex. Never CNAME it to the
+- [ ] **Decide `www`** (was Gate 0f). Recommendation: redirect to apex. Never CNAME it to the
       Pages project.
 - [ ] **Close the milestone** once 0e re-test and Lucie's login pass — rewrite PLAN.md.
 
 ## Later
 
+- [ ] Renderer: italic/bold/links spanning a line break and wrapped bullet lines don't render
+      (`tripsite/build.py:1200` formats per line). Documented as a limit in
+      `tripsite/README.md`; fix + tests would remove it (Gage). Found 2026-09-22.
+- [ ] `--out Dist` (case variant) writes the real `dist/` on macOS but skips the Access
+      warning — compare by inode, not path (`tripsite/build.py:2344`). Low.
+- [ ] Keep `examples/site/` in sync with `build.py` — no test catches drift. Rebuild with
+      `uv run tripsite/build.py examples/london-demo.md --out examples/site` after renderer changes.
 - [ ] Revisit Access on `*.pages.dev` as a second lock — Gate 5 has passed, so this is now open.
 - [ ] Gate 0g — delete the Route 53 hosted zone `Z0944732VRZ4NUBNE0FL`, not before
-      ~2026-10-05 (two weeks of stable mail on Cloudflare). It is the rollback.
+      ~2026-10-05 (two weeks of stable mail on Cloudflare). It is the rollback. Its old card
+      (zone-ID checks) is at `git show 5a14908:tripsite/README.md`, lines 1614–1649.
 - [ ] Clean up the orphaned `skyideas.com` Route 53 zone (`Z08901851VA0TTXNMTFCZ`, ~$0.50/mo).
       Separate job, separate domain.
 - [ ] Second trip live alongside the first — the upload replaces the whole site, so every
@@ -40,6 +45,11 @@
 - [ ] Consider SPF/DKIM/DMARC on `worldcities.ca` if Rob ever sends from that address.
 
 ## Done (recent)
+
+- [x] `tripsite/README.md` rewritten generic (2,503 → 489 lines); cutover gate cards removed,
+      302-only Access verify built into the new guide (2026-09-22)
+- [x] Public London demo (`examples/london-demo.md` → `examples/site/`) + README covers trip
+      sites; build's closing message names its real output dir (165 tests) (2026-09-22)
 
 - [x] **Mexico City trip live** at `worldcities.ca/mexico-city-2026-6b9638/` (2026-09-22)
 - [x] Gate 5 — deploy `b36c4fc1`, all hostnames verified, Rob's login passed
@@ -63,5 +73,5 @@
 
 ---
 
-**Bigger than a session?** The deploy already has its long-form document —
-`tripsite/README.md`'s gate cards. Don't duplicate them here; link to a gate by name.
+**Bigger than a session?** The generic deploy guide is `tripsite/README.md` › "Deploy to
+Cloudflare Pages with Access"; worldcities-specific rules are in CLAUDE.md.

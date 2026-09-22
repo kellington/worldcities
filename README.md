@@ -1,8 +1,53 @@
+# worldcities
+
+Two tools in one repo:
+
+- **[Map posters](#city-map-poster-generator)**: `create_map_poster.py` renders a minimalist
+  poster of any city (the original maptoposter tool, documented below).
+- **[Trip sites](#trip-sites)**: `tripsite/build.py` turns a trip profile into a static,
+  shareable trip page: a Leaflet/OpenStreetMap map of your places, toggleable popular
+  places, a day-by-day schedule, and optional airport and metro/Underground layers.
+
+## Trip sites
+
+Quickstart:
+
+1. **Write a profile.** It's a Markdown file with YAML frontmatter: trip details, where
+   you're staying, popular places, and events. Start from the public example
+   [`examples/london-demo.md`](examples/london-demo.md), a fictional week in London. Keep
+   real profiles in `trips/`, which is gitignored because they hold private details.
+2. **Build it:**
+
+   ```bash
+   uv run tripsite/build.py examples/london-demo.md --out examples/site   # the example
+   uv run tripsite/build.py trips/my-trip.md --out /tmp/try               # try things out
+   uv run tripsite/build.py trips/my-trip.md --dry-run                    # validate only
+   uv run tripsite/build.py trips/live-a.md trips/live-b.md  # REPLACES dist/: list EVERY live trip
+   ```
+
+   Without `--out` the build writes `dist/`, which is **the whole deployable site**: each
+   build trims it to exactly the trips in that run and **deletes any other trip folder**.
+   Use `--out` for anything you don't mean to publish.
+3. **Preview locally:**
+
+   ```bash
+   python -m http.server -d examples/site    # or -d dist
+   # open http://localhost:8000/london-demo/
+   ```
+
+   (Opening the file via `file://` may not load the map tiles.)
+
+The built London example is committed at [`examples/site/`](examples/site/). Everything
+else is in [`tripsite/README.md`](tripsite/README.md): the full profile format, privacy
+options for the stay (`exact` / `approximate` / `hidden`), airport and metro layers,
+caching, tests, and a guide to
+[deploying on Cloudflare Pages with Access](tripsite/README.md#deploy-to-cloudflare-pages-with-access).
+
+---
+
 # City Map Poster Generator
 
-```
-Rob's version of https://github.com/originalankur/maptoposter.git
-```
+Based on [originalankur/maptoposter](https://github.com/originalankur/maptoposter).
 
 
 Generate beautiful, minimalist map posters for any city in the world.

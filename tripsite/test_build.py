@@ -17,6 +17,7 @@ import sys
 import tempfile
 import textwrap
 import unittest
+from unittest import mock
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -428,6 +429,30 @@ class TestSiteOutput(BuildCase):
             rc = build.main([str(a), str(b), "--out", str(out)])
         self.assertEqual(rc, 1)
         self.assertIn("is also used by", err.getvalue())
+
+    def test_closing_message_names_the_output_folder(self) -> None:
+        """Only the default output folder (the deploy folder) gets the dist/Access-app
+        warning; any other --out is named as itself. DEFAULT_OUT is patched to a temp
+        folder so the real dist/ is never touched."""
+        trip = self.tmp / "trip.md"
+        trip.write_text("---\n" + BASE.format(slug=SLUG, end="2026-10-24", display="approximate")
+                        + textwrap.dedent(HOTEL) + "---\n", encoding="utf-8")
+        fake_dist = self.tmp / "dist"
+        other = self.tmp / "elsewhere"
+        with mock.patch.object(build, "DEFAULT_OUT", fake_dist):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                rc = build.main([str(trip)])  # no --out: the (patched) default
+            self.assertEqual(rc, 0)
+            self.assertIn(f"dist now holds 1 trip(s): {SLUG}", out.getvalue())
+            self.assertIn("Access app", out.getvalue())
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                rc = build.main([str(trip), "--out", str(other)])
+            self.assertEqual(rc, 0)
+            self.assertIn(f"{other.resolve()} now holds 1 trip(s): {SLUG}", out.getvalue())
+            self.assertNotIn("dist now holds", out.getvalue())
+            self.assertNotIn("Access app", out.getvalue())
 
     def test_dry_run_reports_stale_without_removing(self) -> None:
         dist = self.tmp / "dist"

@@ -1,0 +1,947 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="generator" content="tripsite">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%23C62828' stroke='white' stroke-width='2'/%3E%3C/svg%3E">
+<title>London in Spring (demo)</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+:root {
+  --theme-bg: #0A1628;
+  --theme-gradient-color: #0A1628;
+  --theme-parks: #0F2235;
+  --theme-road-default: #8B7355;
+  --theme-road-motorway: #D4AF37;
+  --theme-road-primary: #C9A227;
+  --theme-road-residential: #6B5B4F;
+  --theme-road-secondary: #A8893A;
+  --theme-road-tertiary: #8B7355;
+  --theme-text: #D4AF37;
+  --theme-water: #061020;
+}
+:root {
+  --mk-ours: #C62828;
+  --mk-popular: #1565C0;
+  --mk-event: #00695C;
+  --mk-stay: #7B1FA2;
+  --mk-stay-edge: #2A0A3A;
+  --mk-airport: #EF6C00;
+  --mk-outline: #FFFFFF;
+}
+
+:root {
+  --bg: var(--theme-bg, #fff);
+  --text: var(--theme-text, #222);
+  --accent: var(--theme-road-motorway, var(--text));
+  --accent-2: var(--theme-road-primary, var(--accent));
+  --soft: var(--theme-parks, #eee);
+  --line: var(--theme-road-residential, #ccc);
+  --city: var(--theme-water, #9bc);
+}
+* { box-sizing: border-box; }
+html { background: var(--bg); color: var(--text); }
+body { margin: 0 auto; max-width: 1200px; padding: 1rem 1.25rem 2rem;
+       font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+h1 { margin: 0; font-size: 2rem; letter-spacing: .02em; }
+h2 { font-size: 1.2rem; margin: 1.5rem 0 .5rem; }
+h3 { font-size: 1rem; margin: 0 0 .25rem; }
+a { color: var(--accent); }
+.meta { margin: .25rem 0 1rem; }
+.muted { opacity: .75; }
+.site-header { border-bottom: 3px solid var(--accent); margin-bottom: 1rem; }
+.map-section { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 1rem; align-items: start; }
+#map { height: 520px; border: 2px solid var(--line); border-radius: 6px; }
+.map-tools { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; justify-content: space-between;
+             font-size: .9rem; margin: .4rem 0 0; }
+.dot { display: inline-block; width: .9em; height: .9em; border-radius: 50%; vertical-align: -.1em;
+       border: 2px solid var(--mk-outline); box-shadow: 0 0 0 1px rgba(0, 0, 0, .45); margin-left: .5em; }
+.dot--ours { background: var(--mk-ours); }
+.dot--popular { background: var(--mk-popular); }
+/* white ring behind the dark dashes so the edge shows on dark themes (noir) too */
+.dot--stay { background: color-mix(in srgb, var(--mk-stay) 30%, #fff); border: 2px dashed var(--mk-stay-edge);
+             box-shadow: 0 0 0 2px var(--mk-outline); }
+.dot--airport { background: var(--mk-airport); }
+/* the metro swatch is a bar, not a dot: it stands for lines, not a pin */
+.dot--metro { width: 1.6em; height: .35em; border-radius: 2px; border: 0;
+              background: linear-gradient(90deg, #E53935 0 33%, #1E88E5 33% 66%, #43A047 66%); }
+/* airport marker: an amber disc with a white plane, deliberately unlike the round pins */
+.mk-air { background: none; border: 0; }
+.mk-air svg { display: block; filter: drop-shadow(0 0 1px rgba(0, 0, 0, .45)); }
+.metro-legend { display: flex; flex-wrap: wrap; gap: .1rem .5rem; font-size: .85rem;
+                font-variant-numeric: tabular-nums; }
+.metro-legend li { display: flex; align-items: center; gap: .25rem; margin: .1rem 0; }
+.mswatch { display: inline-block; width: .8rem; height: .5rem; border-radius: 2px;
+           box-shadow: 0 0 0 1px rgba(0, 0, 0, .35); }
+.popup hr { border: 0; border-top: 1px solid #ccc; margin: .4rem 0; }
+.panel { background: var(--soft); border-radius: 6px; padding: .25rem 1rem 1rem; max-height: 560px; overflow: auto; }
+.panel h2:first-child { margin-top: .75rem; }
+.panel ul { list-style: none; margin: 0; padding: 0; }
+.panel li { margin: .15rem 0; }
+.cat { border: 1px solid var(--line); border-radius: 4px; margin: 0 0 .6rem; padding: .25rem .6rem .4rem; }
+.cat legend { font-weight: 600; padding: 0 .25rem; }
+.cat ul { padding-left: 1.2rem; }
+label { cursor: pointer; }
+.linkish { background: none; border: 0; padding: 0; font: inherit; color: var(--accent);
+           text-decoration: underline; cursor: pointer; text-align: left; }
+/* '↗' website link in the side lists; outside the label/button so it only follows the link */
+.ext { text-decoration: none; color: var(--accent); padding: 0 .2rem; font-size: .9em; }
+.ext:hover, .ext:focus { text-decoration: underline; }
+.ext:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 2px; }
+.days { list-style: none; padding: 0; margin: 0; display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: .75rem; }
+.day { border: 1px solid var(--line); border-radius: 6px; padding: .6rem .75rem; }
+.events { list-style: none; margin: 0; padding: 0; }
+.event { padding: .4rem .5rem; margin: .35rem 0; border-radius: 4px; border-left: 5px solid; }
+.event--plan { border-left-color: var(--accent); background: var(--soft); }
+.event--city { border-left-color: var(--city); border-left-style: dashed; }
+.ev-main { display: flex; flex-wrap: wrap; gap: .1rem .5rem; align-items: baseline; }
+.ev-name { font-weight: 600; }
+.ev-date { font-size: .9rem; font-weight: 600; }
+.ev-extra { font-size: .9rem; margin-top: .15rem; }
+/* the kept-outside-the-dates block: below the day grid, visibly separate from it */
+.outside { margin-top: 1rem; border-top: 1px dashed var(--line); padding-top: .5rem; }
+.outside-h { font-size: 1rem; margin: 0 0 .25rem; }
+.outside .events { max-width: 640px; }
+.ev-extra .source { margin-left: .4rem; }
+.time { font-variant-numeric: tabular-nums; font-size: .9rem; }
+.badge { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; padding: .05rem .4rem;
+         border-radius: 3px; background: var(--accent); color: var(--bg); }
+.event--city .badge, .badge--city { background: var(--city); color: var(--text); }
+.badge--plan { background: var(--accent); color: var(--bg); }
+.tag { font-size: .75rem; border: 1px solid var(--line); border-radius: 3px; padding: 0 .3rem; }
+.tag--todo { border-style: dashed; }
+.about { border-top: 1px solid var(--line); margin-top: 1.5rem; }
+.popup strong { display: block; }
+.popup p { margin: .25rem 0; }
+.popup .cat-label { font-size: .8rem; opacity: .75; }
+.site-footer { margin-top: 2rem; font-size: .85rem; }
+@media (max-width: 800px) {
+  body { padding: .75rem; }
+  h1 { font-size: 1.5rem; }
+  .map-section { grid-template-columns: 1fr; }
+  #map { height: 60vh; min-height: 320px; }
+  .panel { max-height: none; }
+  .days { grid-template-columns: 1fr; }
+}
+
+</style>
+</head>
+<body>
+<header class="site-header">
+  <h1>London in Spring (demo)</h1>
+  <p class="meta">Sat 10 Apr – Fri 16 Apr 2027 · 7 days · London, United Kingdom</p>
+</header>
+<main>
+<section class="map-section" aria-label="Map">
+  <div class="map-wrap">
+    <div id="map" role="region" aria-label="Map of places"></div>
+    <p class="map-tools">
+      <button type="button" id="fit-all" class="linkish">Show all places on map</button>
+      <span class="legend"><span class="dot dot--ours"></span> Our places
+      <span class="dot dot--popular"></span> Popular places
+      <span class="dot dot--airport"></span> Airport
+      <span class="dot dot--metro"></span> Metro lines</span>
+    </p>
+  </div>
+  <aside class="panel">
+    <h2>Our places</h2>
+  <ul class="ours">
+    <li><button type="button" class="linkish focus-place" data-id="savoy">The Savoy</button> <a class="ext" href="https://www.thesavoylondon.com/" target="_blank" rel="noopener noreferrer" title="Open the The Savoy website in a new tab" aria-label="Open the The Savoy website in a new tab"><span aria-hidden="true">↗</span></a></li>
+  </ul>
+    <h2>Popular places</h2>
+  <fieldset class="cat">
+    <legend><label><input type="checkbox" class="toggle-cat" data-category="daytrip"> Day trip <span class="muted">(2)</span></label></legend>
+    <ul>
+      <li><label><input type="checkbox" class="toggle-place" data-id="kew-gardens" data-category="daytrip" checked> Royal Botanic Gardens, Kew</label> <a class="ext" href="https://www.kew.org/" target="_blank" rel="noopener noreferrer" title="Open the Royal Botanic Gardens, Kew website in a new tab" aria-label="Open the Royal Botanic Gardens, Kew website in a new tab"><span aria-hidden="true">↗</span></a></li>
+      <li><label><input type="checkbox" class="toggle-place" data-id="royal-observatory" data-category="daytrip"> Royal Observatory Greenwich</label> <a class="ext" href="https://www.rmg.co.uk/royal-observatory" target="_blank" rel="noopener noreferrer" title="Open the Royal Observatory Greenwich website in a new tab" aria-label="Open the Royal Observatory Greenwich website in a new tab"><span aria-hidden="true">↗</span></a></li>
+    </ul>
+  </fieldset>
+  <fieldset class="cat">
+    <legend><label><input type="checkbox" class="toggle-cat" data-category="market"> Market <span class="muted">(3)</span></label></legend>
+    <ul>
+      <li><label><input type="checkbox" class="toggle-place" data-id="borough-market" data-category="market" checked> Borough Market</label> <a class="ext" href="https://boroughmarket.org.uk/" target="_blank" rel="noopener noreferrer" title="Open the Borough Market website in a new tab" aria-label="Open the Borough Market website in a new tab"><span aria-hidden="true">↗</span></a></li>
+      <li><label><input type="checkbox" class="toggle-place" data-id="covent-garden" data-category="market"> Covent Garden Market</label> <a class="ext" href="https://www.coventgarden.london/" target="_blank" rel="noopener noreferrer" title="Open the Covent Garden Market website in a new tab" aria-label="Open the Covent Garden Market website in a new tab"><span aria-hidden="true">↗</span></a></li>
+      <li><label><input type="checkbox" class="toggle-place" data-id="columbia-road" data-category="market"> Columbia Road Flower Market</label> <a class="ext" href="https://www.columbiaroad.info/" target="_blank" rel="noopener noreferrer" title="Open the Columbia Road Flower Market website in a new tab" aria-label="Open the Columbia Road Flower Market website in a new tab"><span aria-hidden="true">↗</span></a></li>
+    </ul>
+  </fieldset>
+  <fieldset class="cat">
+    <legend><label><input type="checkbox" class="toggle-cat" data-category="museum"> Museum <span class="muted">(3)</span></label></legend>
+    <ul>
+      <li><label><input type="checkbox" class="toggle-place" data-id="british-museum" data-category="museum" checked> British Museum</label> <a class="ext" href="https://www.britishmuseum.org/" target="_blank" rel="noopener noreferrer" title="Open the British Museum website in a new tab" aria-label="Open the British Museum website in a new tab"><span aria-hidden="true">↗</span></a></li>
+      <li><label><input type="checkbox" class="toggle-place" data-id="tate-modern" data-category="museum" checked> Tate Modern</label> <a class="ext" href="https://www.tate.org.uk/visit/tate-modern" target="_blank" rel="noopener noreferrer" title="Open the Tate Modern website in a new tab" aria-label="Open the Tate Modern website in a new tab"><span aria-hidden="true">↗</span></a></li>
+      <li><label><input type="checkbox" class="toggle-place" data-id="natural-history-museum" data-category="museum"> Natural History Museum</label> <a class="ext" href="https://www.nhm.ac.uk/" target="_blank" rel="noopener noreferrer" title="Open the Natural History Museum website in a new tab" aria-label="Open the Natural History Museum website in a new tab"><span aria-hidden="true">↗</span></a></li>
+    </ul>
+  </fieldset>
+  <fieldset class="cat">
+    <legend><label><input type="checkbox" class="toggle-cat" data-category="park"> Park <span class="muted">(1)</span></label></legend>
+    <ul>
+      <li><label><input type="checkbox" class="toggle-place" data-id="hyde-park" data-category="park" checked> Hyde Park</label> <a class="ext" href="https://www.royalparks.org.uk/visit/parks/hyde-park" target="_blank" rel="noopener noreferrer" title="Open the Hyde Park website in a new tab" aria-label="Open the Hyde Park website in a new tab"><span aria-hidden="true">↗</span></a></li>
+    </ul>
+  </fieldset>
+  <fieldset class="cat">
+    <legend><label><input type="checkbox" class="toggle-cat" data-category="sight"> Sight <span class="muted">(5)</span></label></legend>
+    <ul>
+      <li><label><input type="checkbox" class="toggle-place" data-id="tower-of-london" data-category="sight" checked> Tower of London</label> <a class="ext" href="https://www.hrp.org.uk/tower-of-london/" target="_blank" rel="noopener noreferrer" title="Open the Tower of London website in a new tab" aria-label="Open the Tower of London website in a new tab"><span aria-hidden="true">↗</span></a></li>
+      <li><label><input type="checkbox" class="toggle-place" data-id="buckingham-palace" data-category="sight" checked> Buckingham Palace</label> <a class="ext" href="https://www.rct.uk/visit/buckingham-palace" target="_blank" rel="noopener noreferrer" title="Open the Buckingham Palace website in a new tab" aria-label="Open the Buckingham Palace website in a new tab"><span aria-hidden="true">↗</span></a></li>
+      <li><label><input type="checkbox" class="toggle-place" data-id="westminster-abbey" data-category="sight" checked> Westminster Abbey</label> <a class="ext" href="https://www.westminster-abbey.org/" target="_blank" rel="noopener noreferrer" title="Open the Westminster Abbey website in a new tab" aria-label="Open the Westminster Abbey website in a new tab"><span aria-hidden="true">↗</span></a></li>
+      <li><label><input type="checkbox" class="toggle-place" data-id="big-ben" data-category="sight"> Big Ben (Elizabeth Tower)</label></li>
+      <li><label><input type="checkbox" class="toggle-place" data-id="st-pauls" data-category="sight"> St Paul&#x27;s Cathedral</label> <a class="ext" href="https://www.stpauls.co.uk/" target="_blank" rel="noopener noreferrer" title="Open the St Paul&#x27;s Cathedral website in a new tab" aria-label="Open the St Paul&#x27;s Cathedral website in a new tab"><span aria-hidden="true">↗</span></a></li>
+    </ul>
+  </fieldset>
+    <h2>Getting around</h2>
+  <fieldset class="cat">
+    <legend><label><input type="checkbox" id="toggle-airport" checked> Airport <span class="muted">(1)</span></label></legend>
+    <ul>
+      <li><button type="button" class="linkish focus-airport" data-air="0">LHR — Heathrow Airport</button></li>
+    </ul>
+  </fieldset>
+  <fieldset class="cat">
+    <legend><label><input type="checkbox" id="toggle-metro" checked> Metro lines <span class="muted">(11)</span></label></legend>
+    <ul class="metro-legend">
+      <li title="Bakerloo line: Elephant &amp; Castle → Harrow &amp; Wealdstone"><span class="mswatch" aria-hidden="true" style="background:#ae6017"></span>Bakerloo</li>
+      <li title="Central line: Ealing Broadway → Hainault"><span class="mswatch" aria-hidden="true" style="background:#e42313"></span>Central</li>
+      <li title="Circle line: Edgware Road → Hammersmith"><span class="mswatch" aria-hidden="true" style="background:#ffd329"></span>Circle</li>
+      <li title="District line: Barking → Wimbledon"><span class="mswatch" aria-hidden="true" style="background:#00a166"></span>District</li>
+      <li title="Hammersmith &amp; City line: Barking → Hammersmith"><span class="mswatch" aria-hidden="true" style="background:#f4a9be"></span>Hammersmith &amp; City</li>
+      <li title="Jubilee line: Canning Town → Stratford"><span class="mswatch" aria-hidden="true" style="background:#949699"></span>Jubilee</li>
+      <li title="Metropolitan line: Aldgate → Amersham"><span class="mswatch" aria-hidden="true" style="background:#91005a"></span>Metropolitan</li>
+      <li title="Northern line: Battersea Power Station → Charing Cross → Edgware"><span class="mswatch" aria-hidden="true" style="background:#000000"></span>Northern</li>
+      <li title="Piccadilly line: Barons Court → Hounslow West"><span class="mswatch" aria-hidden="true" style="background:#094fa3"></span>Piccadilly</li>
+      <li title="Victoria line: Brixton → Seven Sisters"><span class="mswatch" aria-hidden="true" style="background:#0a9cda"></span>Victoria</li>
+      <li title="Waterloo &amp; City line: Bank → Waterloo"><span class="mswatch" aria-hidden="true" style="background:#93ceba"></span>Waterloo &amp; City</li>
+    </ul>
+  </fieldset>
+  </aside>
+</section>
+<section class="events-section" aria-labelledby="events-h">
+  <h2 id="events-h">Schedule</h2>
+  <p class="muted legend-events"><span class="badge badge--plan">Our plan</span>
+    <span class="badge badge--city">City event</span> · Times are local (Europe/London).
+    Click an event with ⌖ to show it on the map.</p>
+  <ol class="days">
+    <li class="day" id="day-2027-04-10">
+      <h3>Sat 10 Apr</h3>
+      <ul class="events">
+        <li class="event event--plan"><div class="ev-main"><span class="badge">Our plan</span> <span class="time">All day</span> <span class="ev-name"><button type="button" class="linkish event-go" data-event="0" title="Show on map">Arrive at Heathrow, check in <span aria-hidden="true">⌖</span></button></span></div><div class="ev-extra"><span class="notes">Piccadilly line or Elizabeth line into town.</span></div></li>
+      </ul>
+    </li>
+    <li class="day" id="day-2027-04-11">
+      <h3>Sun 11 Apr</h3>
+      <ul class="events">
+        <li class="event event--plan"><div class="ev-main"><span class="badge">Our plan</span> <span class="time">10:00</span> <span class="ev-name"><button type="button" class="linkish event-go" data-event="1" title="Show on map">British Museum <span aria-hidden="true">⌖</span></button> <a class="ext" href="https://www.britishmuseum.org/" target="_blank" rel="noopener noreferrer" title="Open the British Museum website in a new tab" aria-label="Open the British Museum website in a new tab"><span aria-hidden="true">↗</span></a></span></div></li>
+      </ul>
+    </li>
+    <li class="day" id="day-2027-04-12">
+      <h3>Mon 12 Apr</h3>
+      <ul class="events">
+        <li class="event event--city"><div class="ev-main"><span class="badge">City event</span> <span class="time">11:00</span> <span class="ev-name"><button type="button" class="linkish event-go" data-event="2" title="Show on map">Changing of the Guard (illustrative) <span aria-hidden="true">⌖</span></button></span></div><div class="ev-extra"><span class="notes">Illustrative: the ceremony does not run every day. Check the official schedule.</span> <a class="source" href="https://www.householddivision.org.uk/changing-the-guard" rel="noopener noreferrer" target="_blank">Source</a></div></li>
+        <li class="event event--plan"><div class="ev-main"><span class="badge">Our plan</span> <span class="time">14:00</span> <span class="ev-name"><button type="button" class="linkish event-go" data-event="3" title="Show on map">Walk along the Thames past Big Ben and the Abbey <span aria-hidden="true">⌖</span></button></span></div></li>
+      </ul>
+    </li>
+    <li class="day" id="day-2027-04-13">
+      <h3>Tue 13 Apr</h3>
+      <ul class="events">
+        <li class="event event--plan"><div class="ev-main"><span class="badge">Our plan</span> <span class="time">09:30</span> <span class="ev-name"><button type="button" class="linkish event-go" data-event="4" title="Show on map">Tower of London and the Crown Jewels <span aria-hidden="true">⌖</span></button> <a class="ext" href="https://www.hrp.org.uk/tower-of-london/" target="_blank" rel="noopener noreferrer" title="Open the Tower of London and the Crown Jewels website in a new tab" aria-label="Open the Tower of London and the Crown Jewels website in a new tab"><span aria-hidden="true">↗</span></a></span> <span class="tag">Booked</span></div><div class="ev-extra"><span class="notes">Fictional booking for the demo.</span></div></li>
+      </ul>
+    </li>
+    <li class="day" id="day-2027-04-14">
+      <h3>Wed 14 Apr</h3>
+      <ul class="events">
+        <li class="event event--plan"><div class="ev-main"><span class="badge">Our plan</span> <span class="time">12:00</span> <span class="ev-name"><button type="button" class="linkish event-go" data-event="5" title="Show on map">Lunch at Borough Market, then Tate Modern <span aria-hidden="true">⌖</span></button></span></div></li>
+        <li class="event event--city"><div class="ev-main"><span class="badge">City event</span> <span class="time">17:00</span> <span class="ev-name"><button type="button" class="linkish event-go" data-event="6" title="Show on map">Choral Evensong at Westminster Abbey (illustrative) <span aria-hidden="true">⌖</span></button></span></div><div class="ev-extra"><span class="notes">Illustrative: service times vary. Check the Abbey&#x27;s worship page.</span> <a class="source" href="https://www.westminster-abbey.org/worship/" rel="noopener noreferrer" target="_blank">Source</a></div></li>
+      </ul>
+    </li>
+    <li class="day" id="day-2027-04-15">
+      <h3>Thu 15 Apr</h3>
+      <ul class="events">
+        <li class="event event--plan"><div class="ev-main"><span class="badge">Our plan</span> <span class="time">All day</span> <span class="ev-name"><button type="button" class="linkish event-go" data-event="7" title="Show on map">Day trip to Kew Gardens <span aria-hidden="true">⌖</span></button></span></div></li>
+      </ul>
+    </li>
+    <li class="day" id="day-2027-04-16">
+      <h3>Fri 16 Apr</h3>
+      <ul class="events">
+        <li class="event event--city"><div class="ev-main"><span class="badge">City event</span> <span class="time">11:00</span> <span class="ev-name"><button type="button" class="linkish event-go" data-event="8" title="Show on map">Household Cavalry guard change (illustrative) <span aria-hidden="true">⌖</span></button></span></div><div class="ev-extra"><span class="notes">Illustrative: an inline location rather than a place id, to show the feature.</span> <a class="source" href="https://www.householddivision.org.uk/changing-the-guard" rel="noopener noreferrer" target="_blank">Source</a></div></li>
+        <li class="event event--plan"><div class="ev-main"><span class="badge">Our plan</span> <span class="time">15:00</span> <span class="ev-name"><button type="button" class="linkish event-go" data-event="9" title="Show on map">Greenwich and the Royal Observatory <span aria-hidden="true">⌖</span></button></span></div></li>
+      </ul>
+    </li>
+  </ol>
+  <div class="outside">
+    <h3 class="outside-h">Just outside your dates</h3>
+      <ul class="events">
+        <li class="event event--city"><div class="ev-main"><span class="badge">City event</span> <span class="ev-date">Sun 18 Apr</span> <span class="time">08:00</span> <span class="ev-name"><button type="button" class="linkish event-go" data-event="10" title="Show on map">Columbia Road Flower Market (illustrative) <span aria-hidden="true">⌖</span></button> <a class="ext" href="https://www.columbiaroad.info/" target="_blank" rel="noopener noreferrer" title="Open the Columbia Road Flower Market (illustrative) website in a new tab" aria-label="Open the Columbia Road Flower Market (illustrative) website in a new tab"><span aria-hidden="true">↗</span></a></span></div><div class="ev-extra"><span class="notes">Illustrative: a Sunday market, two days after the demo trip ends.</span></div></li>
+      </ul>
+  </div>
+</section>
+<section class="about" aria-labelledby="about-h">
+  <h2 id="about-h">About this trip</h2>
+<h3>London in Spring (demo)</h3>
+<p>This is a <strong>fictional example trip</strong> that ships with the worldcities repo. The dates and plans are made up; the places are real public landmarks.</p>
+<p>A week in London to show what a trip page looks like:</p>
+<ul>
+<li><strong>The stay</strong> is pinned exactly (<code>hotel_display: exact</code>). A real trip can use <code>approximate</code> or <code>hidden</code> instead.</li>
+<li><strong>Popular places</strong> can be switched on and off one at a time or by category.</li>
+<li><strong>Events</strong> are grouped by day. <code>plan</code> is ours; <code>city</code> is something happening in town.</li>
+<li><strong>Getting around</strong> shows Heathrow and the London Underground lines.</li>
+</ul>
+<p>See <code>tripsite/README.md</code> for the full profile format.</p>
+</section>
+</main>
+<footer class="site-footer"><p class="muted">Private trip page. Map data © OpenStreetMap contributors.</p></footer>
+<script type="application/json" id="trip-data">
+{
+ "trip": {
+  "name": "London in Spring (demo)",
+  "center": {
+   "lat": 51.507,
+   "lon": -0.115
+  },
+  "zoom": 12
+ },
+ "maxApproxZoom": 14,
+ "catLabels": {
+  "daytrip": "Day trip"
+ },
+ "places": [
+  {
+   "group": "ours",
+   "id": "savoy",
+   "name": "The Savoy",
+   "category": "stay",
+   "lat": 51.5101273,
+   "lon": -0.1204993,
+   "address": "Strand, London WC2R 0EZ",
+   "notes": "Fictional stay for the demo. Five minutes' walk to Covent Garden and the river.",
+   "url": "https://www.thesavoylondon.com/"
+  },
+  {
+   "group": "popular",
+   "id": "british-museum",
+   "name": "British Museum",
+   "category": "museum",
+   "lat": 51.5193118,
+   "lon": -0.1267051,
+   "default_on": true,
+   "url": "https://www.britishmuseum.org/"
+  },
+  {
+   "group": "popular",
+   "id": "tower-of-london",
+   "name": "Tower of London",
+   "category": "sight",
+   "lat": 51.508217,
+   "lon": -0.0761879,
+   "default_on": true,
+   "url": "https://www.hrp.org.uk/tower-of-london/"
+  },
+  {
+   "group": "popular",
+   "id": "buckingham-palace",
+   "name": "Buckingham Palace",
+   "category": "sight",
+   "lat": 51.5008349,
+   "lon": -0.1430045,
+   "default_on": true,
+   "url": "https://www.rct.uk/visit/buckingham-palace"
+  },
+  {
+   "group": "popular",
+   "id": "westminster-abbey",
+   "name": "Westminster Abbey",
+   "category": "sight",
+   "lat": 51.499399,
+   "lon": -0.127391,
+   "default_on": true,
+   "url": "https://www.westminster-abbey.org/"
+  },
+  {
+   "group": "popular",
+   "id": "big-ben",
+   "name": "Big Ben (Elizabeth Tower)",
+   "category": "sight",
+   "lat": 51.5006944,
+   "lon": -0.1245749,
+   "default_on": false
+  },
+  {
+   "group": "popular",
+   "id": "st-pauls",
+   "name": "St Paul's Cathedral",
+   "category": "sight",
+   "lat": 51.5137872,
+   "lon": -0.0984506,
+   "default_on": false,
+   "url": "https://www.stpauls.co.uk/"
+  },
+  {
+   "group": "popular",
+   "id": "tate-modern",
+   "name": "Tate Modern",
+   "category": "museum",
+   "lat": 51.5074293,
+   "lon": -0.0993416,
+   "default_on": true,
+   "url": "https://www.tate.org.uk/visit/tate-modern"
+  },
+  {
+   "group": "popular",
+   "id": "natural-history-museum",
+   "name": "Natural History Museum",
+   "category": "museum",
+   "lat": 51.4965109,
+   "lon": -0.1760019,
+   "default_on": false,
+   "url": "https://www.nhm.ac.uk/"
+  },
+  {
+   "group": "popular",
+   "id": "borough-market",
+   "name": "Borough Market",
+   "category": "market",
+   "lat": 51.5055264,
+   "lon": -0.090438,
+   "default_on": true,
+   "url": "https://boroughmarket.org.uk/"
+  },
+  {
+   "group": "popular",
+   "id": "covent-garden",
+   "name": "Covent Garden Market",
+   "category": "market",
+   "lat": 51.5119791,
+   "lon": -0.1227413,
+   "default_on": false,
+   "url": "https://www.coventgarden.london/"
+  },
+  {
+   "group": "popular",
+   "id": "columbia-road",
+   "name": "Columbia Road Flower Market",
+   "category": "market",
+   "lat": 51.5292185,
+   "lon": -0.0696196,
+   "default_on": false,
+   "notes": "Sundays only.",
+   "url": "https://www.columbiaroad.info/"
+  },
+  {
+   "group": "popular",
+   "id": "hyde-park",
+   "name": "Hyde Park",
+   "category": "park",
+   "lat": 51.5074889,
+   "lon": -0.1622074,
+   "default_on": true,
+   "url": "https://www.royalparks.org.uk/visit/parks/hyde-park"
+  },
+  {
+   "group": "popular",
+   "id": "kew-gardens",
+   "name": "Royal Botanic Gardens, Kew",
+   "category": "daytrip",
+   "lat": 51.4781974,
+   "lon": -0.2968861,
+   "default_on": true,
+   "notes": "About 45 minutes west by District line or Overground.",
+   "url": "https://www.kew.org/"
+  },
+  {
+   "group": "popular",
+   "id": "royal-observatory",
+   "name": "Royal Observatory Greenwich",
+   "category": "daytrip",
+   "lat": 51.4773623,
+   "lon": -0.0008456,
+   "default_on": false,
+   "url": "https://www.rmg.co.uk/royal-observatory"
+  }
+ ],
+ "events": [
+  {
+   "name": "Arrive at Heathrow, check in",
+   "kind": "plan",
+   "date": "2027-04-10",
+   "day": "Sat 10 Apr",
+   "time": null,
+   "loc": {
+    "ref": "savoy"
+   },
+   "url": null,
+   "source": null
+  },
+  {
+   "name": "British Museum",
+   "kind": "plan",
+   "date": "2027-04-11",
+   "day": "Sun 11 Apr",
+   "time": "10:00",
+   "loc": {
+    "ref": "british-museum"
+   },
+   "url": "https://www.britishmuseum.org/",
+   "source": null
+  },
+  {
+   "name": "Changing of the Guard (illustrative)",
+   "kind": "city",
+   "date": "2027-04-12",
+   "day": "Mon 12 Apr",
+   "time": "11:00",
+   "loc": {
+    "ref": "buckingham-palace"
+   },
+   "url": null,
+   "source": "https://www.householddivision.org.uk/changing-the-guard"
+  },
+  {
+   "name": "Walk along the Thames past Big Ben and the Abbey",
+   "kind": "plan",
+   "date": "2027-04-12",
+   "day": "Mon 12 Apr",
+   "time": "14:00",
+   "loc": {
+    "ref": "big-ben"
+   },
+   "url": null,
+   "source": null
+  },
+  {
+   "name": "Tower of London and the Crown Jewels",
+   "kind": "plan",
+   "date": "2027-04-13",
+   "day": "Tue 13 Apr",
+   "time": "09:30",
+   "loc": {
+    "ref": "tower-of-london"
+   },
+   "url": "https://www.hrp.org.uk/tower-of-london/",
+   "source": null
+  },
+  {
+   "name": "Lunch at Borough Market, then Tate Modern",
+   "kind": "plan",
+   "date": "2027-04-14",
+   "day": "Wed 14 Apr",
+   "time": "12:00",
+   "loc": {
+    "ref": "borough-market"
+   },
+   "url": null,
+   "source": null
+  },
+  {
+   "name": "Choral Evensong at Westminster Abbey (illustrative)",
+   "kind": "city",
+   "date": "2027-04-14",
+   "day": "Wed 14 Apr",
+   "time": "17:00",
+   "loc": {
+    "ref": "westminster-abbey"
+   },
+   "url": null,
+   "source": "https://www.westminster-abbey.org/worship/"
+  },
+  {
+   "name": "Day trip to Kew Gardens",
+   "kind": "plan",
+   "date": "2027-04-15",
+   "day": "Thu 15 Apr",
+   "time": null,
+   "loc": {
+    "ref": "kew-gardens"
+   },
+   "url": null,
+   "source": null
+  },
+  {
+   "name": "Household Cavalry guard change (illustrative)",
+   "kind": "city",
+   "date": "2027-04-16",
+   "day": "Fri 16 Apr",
+   "time": "11:00",
+   "loc": {
+    "lat": 51.5046617,
+    "lon": -0.1282623,
+    "label": "Horse Guards Parade"
+   },
+   "url": null,
+   "source": "https://www.householddivision.org.uk/changing-the-guard"
+  },
+  {
+   "name": "Greenwich and the Royal Observatory",
+   "kind": "plan",
+   "date": "2027-04-16",
+   "day": "Fri 16 Apr",
+   "time": "15:00",
+   "loc": {
+    "ref": "royal-observatory"
+   },
+   "url": null,
+   "source": null
+  },
+  {
+   "name": "Columbia Road Flower Market (illustrative)",
+   "kind": "city",
+   "date": "2027-04-18",
+   "day": "Sun 18 Apr",
+   "time": "08:00",
+   "loc": {
+    "ref": "columbia-road"
+   },
+   "url": "https://www.columbiaroad.info/",
+   "source": null
+  }
+ ],
+ "airports": [
+  {
+   "code": "LHR",
+   "name": "Heathrow Airport",
+   "lat": 51.46775,
+   "lon": -0.45477
+  }
+ ],
+ "metro": {
+  "on": true,
+  "count": 11,
+  "lines": [{"ref":"Bakerloo","name":"Bakerloo line: Elephant \u0026 Castle → Harrow \u0026 Wealdstone","colour":"#ae6017","segs":[[[51.49617,-0.10169],[51.49581,-0.1013]],[[51.49629,-0.10167],[51.49588,-0.1011]],[[51.49662,-0.10226],[51.49617,-0.10169]],[[51.49667,-0.10216],[51.49629,-0.10167]],[[51.49662,-0.10226],[51.49838,-0.10465],[51.49852,-0.10603]],[[51.49844,-0.10457],[51.49667,-0.10216]],[[51.49828,-0.10939],[51.4983,-0.11063],[51.49867,-0.11208]],[[51.49852,-0.10603],[51.49828,-0.10939]],[[51.49841,-0.11088],[51.49859,-0.10598]],[[51.49936,-0.11336],[51.49841,-0.11088]],[[51.49859,-0.10598],[51.49844,-0.10457]],[[51.49867,-0.11208],[51.49986,-0.11457]],[[51.49991,-0.11457],[51.49936,-0.11336]],[[51.49986,-0.11457],[51.50021,-0.11509],[51.5009,-0.11519]],[[51.50292,-0.11482],[51.50053,-0.11512],[51.49991,-0.11457]],[[51.5009,-0.11519],[51.50292,-0.11484]],[[51.50292,-0.11484],[51.50353,-0.11499],[51.50399,-0.11581]],[[51.504,-0.11579],[51.50354,-0.11497],[51.50292,-0.11482]],[[51.50399,-0.11581],[51.50486,-0.11932],[51.50649,-0.12266],[51.50716,-0.12599]],[[51.50721,-0.12594],[51.50648,-0.12241],[51.50476,-0.11892],[51.504,-0.11579]],[[51.50716,-0.12599],[51.50758,-0.13022]],[[51.50759,-0.12968],[51.50721,-0.12594]],[[51.50758,-0.13022],[51.50804,-0.13149]],[[51.50809,-0.13145],[51.50771,-0.13082],[51.50759,-0.12968]],[[51.50804,-0.13149],[51.51,-0.1333],[51.50986,-0.13676],[51.51036,-0.13818]],[[51.51007,-0.13367],[51.50969,-0.13273],[51.50809,-0.13145]],[[51.51548,-0.14193],[51.51393,-0.14123],[51.51036,-0.13812],[51.50998,-0.13728],[51.50991,-0.13621]],[[51.50991,-0.13621],[51.51007,-0.13367]],[[51.51036,-0.13818],[51.51449,-0.14165],[51.51626,-0.14225]],[[51.51784,-0.14311],[51.51548,-0.14193]],[[51.51599,-0.17427],[51.51607,-0.17537],[51.51705,-0.17667]],[[51.51814,-0.17162],[51.51689,-0.17263],[51.51599,-0.17427]],[[51.51619,-0.17507],[51.51612,-0.1742]],[[51.51612,-0.1742],[51.51642,-0.1733],[51.51758,-0.17208],[51.51976,-0.17108]],[[51.51753,-0.17698],[51.51619,-0.17507]],[[51.51626,-0.14225],[51.51767,-0.14298],[51.51838,-0.14418]],[[51.51705,-0.17667],[51.51977,-0.17866],[51.52234,-0.18243]],[[51.52237,-0.18234],[51.51981,-0.17858],[51.51753,-0.17698]],[[51.51839,-0.14413],[51.51784,-0.14311]],[[51.51971,-0.17102],[51.51814,-0.17162]],[[51.51838,-0.14418],[51.52296,-0.14623]],[[51.52397,-0.15392],[51.5248,-0.14885],[51.52462,-0.14742],[51.52297,-0.14618],[51.51839,-0.14413]],[[51.52044,-0.17027],[51.51971,-0.17102]],[[51.51976,-0.17108],[51.52061,-0.17007],[51.52136,-0.16796]],[[51.52216,-0.16523],[51.52044,-0.17027]],[[51.52136,-0.16796],[51.52219,-0.16525]],[[51.52232,-0.16265],[51.52216,-0.16523]],[[51.52219,-0.16525],[51.52241,-0.16193],[51.52302,-0.15815]],[[51.52299,-0.15814],[51.52232,-0.16265]],[[51.52234,-0.18243],[51.52302,-0.18357],[51.5237,-0.18407]],[[51.52371,-0.18395],[51.52237,-0.18234]],[[51.52296,-0.14623],[51.52417,-0.14691]],[[51.52417,-0.14691],[51.5247,-0.14765],[51.52476,-0.14883],[51.52389,-0.15417],[51.52299,-0.15814]],[[51.52302,-0.15815],[51.52342,-0.15645]],[[51.52342,-0.15645],[51.52397,-0.15392]],[[51.5237,-0.18407],[51.52526,-0.1841],[51.52733,-0.18329],[51.52802,-0.18375],[51.5298,-0.18599]],[[51.52985,-0.18585],[51.52806,-0.18368],[51.52733,-0.18327],[51.52526,-0.18407],[51.52371,-0.18395]],[[51.5298,-0.18599],[51.53366,-0.19054],[51.53438,-0.1921]],[[51.53441,-0.19208],[51.53354,-0.19025],[51.52985,-0.18585]],[[51.53162,-0.23884],[51.53044,-0.23627],[51.53022,-0.23167]],[[51.53022,-0.23167],[51.53034,-0.22923]],[[51.53027,-0.22923],[51.53017,-0.23294],[51.53035,-0.23586],[51.53067,-0.23715],[51.53158,-0.23884]],[[51.53053,-0.22505],[51.53027,-0.22923]],[[51.53034,-0.22923],[51.5306,-0.22506]],[[51.53053,-0.22505],[51.53102,-0.22052],[51.53318,-0.20986]],[[51.5306,-0.22506],[51.53105,-0.22054],[51.53331,-0.20994]],[[51.53158,-0.23884],[51.53191,-0.24002],[51.53219,-0.24276]],[[51.53223,-0.24275],[51.53162,-0.23884]],[[51.53219,-0.24276],[51.53224,-0.24386]],[[51.53243,-0.24382],[51.53223,-0.24275]],[[51.53224,-0.24386],[51.53245,-0.24563]],[[51.53254,-0.24561],[51.53243,-0.24382]],[[51.53245,-0.24563],[51.53267,-0.24733]],[[51.5327,-0.24731],[51.53254,-0.24561]],[[51.53267,-0.24733],[51.53383,-0.25152]],[[51.53385,-0.2515],[51.5327,-0.24731]],[[51.53318,-0.20986],[51.53331,-0.20911]],[[51.53331,-0.20994],[51.53347,-0.20883]],[[51.53331,-0.20911],[51.53337,-0.20879]],[[51.53337,-0.20879],[51.53363,-0.20728]],[[51.53347,-0.20883],[51.53375,-0.20733]],[[51.53363,-0.20728],[51.53384,-0.20635]],[[51.53375,-0.20733],[51.53416,-0.2048]],[[51.5345,-0.25315],[51.53383,-0.25152]],[[51.53384,-0.20635],[51.53436,-0.20331]],[[51.53452,-0.25312],[51.53385,-0.2515]],[[51.53416,-0.2048],[51.53471,-0.20152]],[[51.53436,-0.20331],[51.53467,-0.2015]],[[51.53438,-0.1921],[51.53523,-0.19529],[51.53528,-0.19629]],[[51.53545,-0.19628],[51.53534,-0.19496],[51.53441,-0.19208]],[[51.53557,-0.25593],[51.5345,-0.25315]],[[51.5356,-0.25591],[51.53452,-0.25312]],[[51.53528,-0.19629],[51.53467,-0.2015]],[[51.53471,-0.20152],[51.53482,-0.20088]],[[51.53482,-0.20088],[51.53545,-0.19628]],[[51.53568,-0.25622],[51.53557,-0.25593]],[[51.53571,-0.25619],[51.5356,-0.25591]],[[51.5361,-0.25728],[51.53568,-0.25622]],[[51.53613,-0.25725],[51.53571,-0.25619]],[[51.53612,-0.25731],[51.5361,-0.25728]],[[51.54329,-0.27405],[51.54108,-0.26839],[51.53612,-0.25731]],[[51.53614,-0.25729],[51.53613,-0.25725]],[[51.54331,-0.27402],[51.54065,-0.26731],[51.53614,-0.25729]],[[51.54353,-0.2747],[51.54329,-0.27405]],[[51.54356,-0.27468],[51.54331,-0.27402]],[[51.5437,-0.27515],[51.54353,-0.2747]],[[51.54372,-0.27513],[51.54356,-0.27468]],[[51.54719,-0.28823],[51.5469,-0.28494],[51.54644,-0.28283],[51.5437,-0.27515]],[[51.54725,-0.28834],[51.54658,-0.28324],[51.54372,-0.27513]],[[51.54731,-0.29001],[51.54719,-0.28823]],[[51.54737,-0.29011],[51.54725,-0.28834]],[[51.54837,-0.29283],[51.54766,-0.29166],[51.54731,-0.29001]],[[51.54839,-0.29279],[51.54762,-0.29145],[51.54737,-0.29011]],[[51.5484,-0.29287],[51.54837,-0.29283]],[[51.54842,-0.29283],[51.54839,-0.29279]],[[51.55139,-0.29594],[51.5484,-0.29287]],[[51.5514,-0.2959],[51.54842,-0.29283]],[[51.55257,-0.29718],[51.55139,-0.29594]],[[51.55259,-0.29713],[51.5514,-0.2959]],[[51.57746,-0.31284],[51.55696,-0.30059],[51.55257,-0.29718]],[[51.57744,-0.31275],[51.55721,-0.30071],[51.55259,-0.29713]],[[51.57778,-0.313],[51.57744,-0.31275]],[[51.5778,-0.31308],[51.57746,-0.31284]],[[51.59182,-0.33438],[51.58742,-0.32512],[51.58539,-0.3217],[51.58208,-0.31719],[51.57778,-0.313]],[[51.59184,-0.33448],[51.58738,-0.32515],[51.58508,-0.32129],[51.58206,-0.31723],[51.5778,-0.31308]]]},{"ref":"Central","name":"Central line: Ealing Broadway → Hainault","colour":"#e42313","segs":[[[51.50456,-0.21684],[51.50429,-0.21891],[51.50475,-0.22164],[51.50788,-0.22167],[51.50881,-0.22225],[51.51045,-0.22418]],[[51.5068,-0.20661],[51.50456,-0.21684]],[[51.50728,-0.20494],[51.5068,-0.20661]],[[51.50983,-0.22435],[51.50596,-0.22434],[51.5052,-0.22363],[51.50488,-0.22284],[51.50441,-0.2194],[51.50443,-0.218],[51.50688,-0.20679]],[[51.50688,-0.20679],[51.50725,-0.20554]],[[51.50725,-0.20554],[51.50765,-0.20417]],[[51.50743,-0.20445],[51.50728,-0.20494]],[[51.50755,-0.20412],[51.50743,-0.20445]],[[51.50844,-0.20055],[51.50823,-0.20202],[51.50755,-0.20412]],[[51.50765,-0.20417],[51.50848,-0.20059]],[[51.50928,-0.19542],[51.50856,-0.19834],[51.50844,-0.20055]],[[51.50848,-0.20059],[51.50859,-0.19838],[51.50926,-0.19574]],[[51.50926,-0.19574],[51.50998,-0.19185],[51.51062,-0.18276],[51.51189,-0.17441],[51.51487,-0.14607]],[[51.51522,-0.14222],[51.51425,-0.14988],[51.5117,-0.17507],[51.51056,-0.18273],[51.50991,-0.1918],[51.50928,-0.19542]],[[51.5102,-0.22436],[51.50983,-0.22435]],[[51.51024,-0.22436],[51.5102,-0.22436]],[[51.5104,-0.22436],[51.51024,-0.22436]],[[51.51054,-0.22436],[51.5104,-0.22436]],[[51.51045,-0.22418],[51.51054,-0.22418]],[[51.51086,-0.22436],[51.51054,-0.22436]],[[51.51054,-0.22418],[51.51077,-0.22417]],[[51.51077,-0.22417],[51.51086,-0.22417]],[[51.51177,-0.22438],[51.51086,-0.22436]],[[51.51086,-0.22417],[51.51194,-0.22405]],[[51.51195,-0.22438],[51.51177,-0.22438]],[[51.51194,-0.22405],[51.51434,-0.22483],[51.51499,-0.22543]],[[51.51213,-0.22438],[51.51195,-0.22438]],[[51.51498,-0.22554],[51.5144,-0.22498],[51.51213,-0.22438]],[[51.51357,-0.0907],[51.51335,-0.08937],[51.51405,-0.08652]],[[51.51434,-0.09532],[51.51357,-0.0907]],[[51.51398,-0.08651],[51.51323,-0.08941],[51.51452,-0.09635]],[[51.51687,-0.08329],[51.51521,-0.08451],[51.51398,-0.08651]],[[51.51405,-0.08652],[51.51551,-0.08426],[51.51689,-0.08338]],[[51.51562,-0.09939],[51.51434,-0.09532]],[[51.51452,-0.09635],[51.51501,-0.0977]],[[51.51487,-0.14607],[51.51553,-0.14023]],[[51.51502,-0.29762],[51.51492,-0.30087]],[[51.51543,-0.22665],[51.51498,-0.22554]],[[51.51499,-0.22543],[51.51546,-0.22663]],[[51.51501,-0.0977],[51.51662,-0.10308]],[[51.52513,-0.26931],[51.5242,-0.27215],[51.51647,-0.28301],[51.51552,-0.28476],[51.51505,-0.2871],[51.51502,-0.29762]],[[51.51504,-0.29856],[51.51503,-0.30105]],[[51.51504,-0.29856],[51.51509,-0.2871],[51.51556,-0.2848],[51.51646,-0.2831],[51.52423,-0.27219],[51.52489,-0.27062],[51.52517,-0.26928]],[[51.51543,-0.14023],[51.51522,-0.14222]],[[51.51525,-0.24216],[51.51542,-0.24403]],[[51.51526,-0.24181],[51.51525,-0.24216]],[[51.51537,-0.23982],[51.51526,-0.24181]],[[51.51544,-0.24393],[51.51528,-0.24217]],[[51.51528,-0.24217],[51.51529,-0.24182]],[[51.51529,-0.24182],[51.51542,-0.23984]],[[51.51573,-0.23547],[51.51537,-0.23982]],[[51.51542,-0.24403],[51.51555,-0.24471]],[[51.51542,-0.23984],[51.51612,-0.23132],[51.51598,-0.22918],[51.51543,-0.22665]],[[51.51613,-0.13288],[51.51543,-0.14023]],[[51.51556,-0.24459],[51.51544,-0.24393]],[[51.51546,-0.22663],[51.51617,-0.23021]],[[51.51553,-0.14023],[51.51626,-0.13261]],[[51.51555,-0.24471],[51.51655,-0.24715]],[[51.51657,-0.24712],[51.51556,-0.24459]],[[51.51785,-0.11792],[51.5183,-0.11356],[51.51767,-0.10654],[51.51562,-0.09939]],[[51.5158,-0.23517],[51.51573,-0.23547]],[[51.51617,-0.23021],[51.51618,-0.23259],[51.5158,-0.23517]],[[51.51638,-0.12994],[51.51613,-0.13288]],[[51.51626,-0.13261],[51.51651,-0.12985]],[[51.51747,-0.12098],[51.51695,-0.1264],[51.51638,-0.12994]],[[51.51651,-0.12985],[51.5175,-0.12121]],[[51.51655,-0.24715],[51.5167,-0.24736]],[[51.51672,-0.24733],[51.51657,-0.24712]],[[51.51662,-0.10308],[51.51746,-0.10568],[51.51797,-0.10987]],[[51.5167,-0.24736],[51.51965,-0.25052]],[[51.51967,-0.25051],[51.51672,-0.24733]],[[51.51796,-0.08257],[51.51687,-0.08329]],[[51.51689,-0.08338],[51.51792,-0.08281]],[[51.5178,-0.11791],[51.51747,-0.12098]],[[51.5175,-0.12121],[51.51785,-0.11792]],[[51.51798,-0.11629],[51.5178,-0.11791]],[[51.51792,-0.08281],[51.51884,-0.08185]],[[51.51877,-0.08171],[51.51796,-0.08257]],[[51.51797,-0.10987],[51.51827,-0.11355],[51.51798,-0.11629]],[[51.52723,-0.05684],[51.52621,-0.06642],[51.52558,-0.06982],[51.52276,-0.07606],[51.51877,-0.08171]],[[51.51884,-0.08185],[51.52283,-0.07619],[51.52548,-0.07048],[51.52628,-0.06644],[51.52738,-0.05684]],[[51.51965,-0.25052],[51.51981,-0.25068]],[[51.51983,-0.25066],[51.51967,-0.25051]],[[51.51981,-0.25068],[51.52144,-0.25249]],[[51.52214,-0.25365],[51.52134,-0.25224],[51.51983,-0.25066]],[[51.52144,-0.25249],[51.52268,-0.25546],[51.525,-0.26626]],[[51.52506,-0.26638],[51.52273,-0.25548],[51.52214,-0.25365]],[[51.52383,-0.0381],[51.52377,-0.0406],[51.52414,-0.04549],[51.52453,-0.04681],[51.52658,-0.05097],[51.52703,-0.05275]],[[51.52481,-0.03527],[51.52383,-0.0381]],[[51.52638,-0.02797],[51.52481,-0.03527]],[[51.525,-0.26626],[51.52522,-0.26896],[51.526,-0.27157],[51.52734,-0.27832],[51.53105,-0.2984]],[[51.525,-0.26626],[51.5252,-0.26851]],[[51.53108,-0.29838],[51.5303,-0.29329],[51.52608,-0.27177],[51.52548,-0.26953],[51.52506,-0.26638]],[[51.52523,-0.2685],[51.52506,-0.26638]],[[51.5252,-0.26851],[51.52513,-0.26931]],[[51.52517,-0.26928],[51.52523,-0.2685]],[[51.52737,-0.02468],[51.52638,-0.02797]],[[51.52703,-0.05275],[51.52723,-0.05684]],[[51.52723,-0.0527],[51.52677,-0.05086],[51.5244,-0.04613],[51.52396,-0.0421],[51.52413,-0.03825],[51.52522,-0.03449],[51.52664,-0.02816],[51.52759,-0.02505],[51.52898,-0.02199],[51.53279,-0.01672],[51.5371,-0.00931],[51.5403,-0.00546]],[[51.52738,-0.05684],[51.52723,-0.0527]],[[51.5402,-0.00532],[51.53721,-0.0087],[51.53271,-0.01658],[51.52881,-0.0218],[51.52737,-0.02468]],[[51.53105,-0.2984],[51.53108,-0.29861]],[[51.53108,-0.29861],[51.53161,-0.30262]],[[51.53111,-0.29859],[51.53108,-0.29838]],[[51.53165,-0.3026],[51.53111,-0.29859]],[[51.53161,-0.30262],[51.53169,-0.30312]],[[51.53173,-0.30309],[51.53165,-0.3026]],[[51.53169,-0.30312],[51.5327,-0.30768]],[[51.53272,-0.30765],[51.53173,-0.30309]],[[51.5327,-0.30768],[51.53283,-0.30816]],[[51.53285,-0.30811],[51.53272,-0.30765]],[[51.53283,-0.30816],[51.53316,-0.3095]],[[51.53319,-0.30941],[51.53285,-0.30811]],[[51.53316,-0.3095],[51.53324,-0.30981]],[[51.53328,-0.30974],[51.53319,-0.30941]],[[51.53324,-0.30981],[51.5357,-0.31946]],[[51.53574,-0.31943],[51.53328,-0.30974]],[[51.5357,-0.31946],[51.53577,-0.31969]],[[51.5358,-0.31968],[51.53574,-0.31943]],[[51.53577,-0.31969],[51.53681,-0.32401]],[[51.53691,-0.32403],[51.5358,-0.31968]],[[51.53681,-0.32401],[51.53688,-0.32428]],[[51.53688,-0.32428],[51.53945,-0.33465]],[[51.53697,-0.32428],[51.53691,-0.32403]],[[51.53948,-0.33462],[51.53697,-0.32428]],[[51.53945,-0.33465],[51.53959,-0.33523]],[[51.53962,-0.33521],[51.53948,-0.33462]],[[51.53959,-0.33523],[51.54065,-0.33937]],[[51.54073,-0.33942],[51.53962,-0.33521]],[[51.54202,-0.00283],[51.5402,-0.00532]],[[51.5403,-0.00546],[51.54208,-0.00296]],[[51.54065,-0.33937],[51.54074,-0.33979]],[[51.54085,-0.33986],[51.54073,-0.33942]],[[51.54074,-0.33979],[51.54088,-0.3405]],[[51.54101,-0.34049],[51.54085,-0.33986]],[[51.54088,-0.3405],[51.54117,-0.34171]],[[51.54169,-0.34292],[51.54101,-0.34049]],[[51.54117,-0.34171],[51.54161,-0.34319]],[[51.54161,-0.34319],[51.54172,-0.34358]],[[51.54174,-0.3431],[51.54169,-0.34292]],[[51.54172,-0.34358],[51.54231,-0.34587]],[[51.54185,-0.34349],[51.54174,-0.3431]],[[51.54242,-0.34577],[51.54185,-0.34349]],[[51.5421,-0.00271],[51.54202,-0.00283]],[[51.54208,-0.00296],[51.54216,-0.00284]],[[51.54293,-0.00152],[51.5421,-0.00271]],[[51.54216,-0.00284],[51.54315,-0.00138]],[[51.54231,-0.34587],[51.54231,-0.34588]],[[51.54231,-0.34588],[51.54233,-0.34597]],[[51.54233,-0.34597],[51.54236,-0.34608]],[[51.54236,-0.34608],[51.54253,-0.34673]],[[51.54243,-0.3458],[51.54242,-0.34577]],[[51.54245,-0.3459],[51.54243,-0.3458]],[[51.54248,-0.34601],[51.54245,-0.3459]],[[51.5426,-0.34649],[51.54248,-0.34601]],[[51.54253,-0.34673],[51.544,-0.35237]],[[51.54401,-0.35223],[51.5426,-0.34649]],[[51.54359,-0.00062],[51.54293,-0.00152]],[[51.54315,-0.00138],[51.54513,0.00077],[51.54607,0.00083],[51.5471,0.00038],[51.54847,-0.00105],[51.55039,-0.00552],[51.55116,-0.00671],[51.55203,-0.00743]],[[51.55205,-0.00737],[51.55075,-0.00598],[51.54854,-0.00093],[51.54758,0.00021],[51.54641,0.00089],[51.54542,0.00103],[51.5444,0.00039],[51.54359,-0.00062]],[[51.544,-0.35237],[51.5441,-0.35272]],[[51.54409,-0.35253],[51.54401,-0.35223]],[[51.54508,-0.35619],[51.54409,-0.35253]],[[51.5441,-0.35272],[51.54504,-0.35622]],[[51.54504,-0.35622],[51.54522,-0.35688]],[[51.54526,-0.35685],[51.54508,-0.35619]],[[51.54522,-0.35688],[51.55244,-0.38568]],[[51.55247,-0.38567],[51.54526,-0.35685]],[[51.55203,-0.00743],[51.55297,-0.0079],[51.55404,-0.0079],[51.55579,-0.00665]],[[51.55577,-0.00661],[51.55403,-0.00784],[51.55298,-0.00784],[51.55205,-0.00737]],[[51.55244,-0.38568],[51.55245,-0.38577]],[[51.55245,-0.38577],[51.5532,-0.38953],[51.55654,-0.3982]],[[51.55249,-0.38576],[51.55247,-0.38567]],[[51.5566,-0.39806],[51.55341,-0.39002],[51.55249,-0.38576]],[[51.55659,-0.00546],[51.55577,-0.00661]],[[51.55579,-0.00665],[51.55743,-0.00421]],[[51.55654,-0.3982],[51.55661,-0.39842]],[[51.56264,0.0036],[51.56122,0.00183],[51.55659,-0.00546]],[[51.55669,-0.39831],[51.5566,-0.39806]],[[51.55661,-0.39842],[51.55962,-0.40718]],[[51.55965,-0.40714],[51.55669,-0.39831]],[[51.55743,-0.00421],[51.56125,0.00176],[51.56297,0.0039],[51.56957,0.00939]],[[51.55962,-0.40718],[51.5597,-0.40744]],[[51.55973,-0.40738],[51.55965,-0.40714]],[[51.5597,-0.40744],[51.56078,-0.41097]],[[51.56126,-0.41209],[51.55973,-0.40738]],[[51.56078,-0.41097],[51.56082,-0.41107]],[[51.56082,-0.41107],[51.56117,-0.412]],[[51.56117,-0.412],[51.56143,-0.41271]],[[51.56147,-0.41269],[51.56126,-0.41209]],[[51.56143,-0.41271],[51.56751,-0.43119]],[[51.56753,-0.43113],[51.56147,-0.41269]],[[51.56854,0.00857],[51.56441,0.00545],[51.56264,0.0036]],[[51.57245,0.01399],[51.57092,0.01119],[51.56906,0.0089],[51.56529,0.00612],[51.56264,0.0036]],[[51.56751,-0.43119],[51.56757,-0.43141]],[[51.5676,-0.43134],[51.56753,-0.43113]],[[51.56757,-0.43141],[51.56794,-0.43253]],[[51.56774,-0.43178],[51.5676,-0.43134]],[[51.56943,-0.43701],[51.56774,-0.43178]],[[51.56794,-0.43253],[51.56936,-0.43707]],[[51.57092,0.01137],[51.56854,0.00857]],[[51.56957,0.00939],[51.57101,0.01112]],[[51.56957,0.00939],[51.57094,0.01113],[51.57245,0.01389]],[[51.57405,0.02381],[51.57235,0.01828],[51.57166,0.01275],[51.57092,0.01137]],[[51.57101,0.01112],[51.57181,0.01299],[51.57264,0.01898],[51.57611,0.03052],[51.57665,0.03515],[51.57664,0.03943]],[[51.57239,0.08962],[51.57109,0.08895],[51.57008,0.08743],[51.56977,0.08546],[51.56997,0.08271],[51.57056,0.08073],[51.5756,0.07057],[51.57632,0.06757]],[[51.57281,0.08979],[51.57239,0.08962]],[[51.57245,0.01389],[51.57318,0.01534]],[[51.57314,0.01536],[51.57245,0.01399]],[[51.57548,0.08999],[51.57281,0.08979]],[[51.5766,0.06677],[51.57642,0.06819],[51.57565,0.07065],[51.57062,0.0808],[51.56994,0.08345],[51.56987,0.08594],[51.57037,0.08787],[51.57113,0.08879],[51.57313,0.08965]],[[51.57313,0.08965],[51.57548,0.08995]],[[51.5795,0.02065],[51.57442,0.01687],[51.57314,0.01536]],[[51.57318,0.01534],[51.57444,0.01682],[51.57952,0.0206]],[[51.57656,0.03943],[51.57658,0.03515],[51.57604,0.03056],[51.57405,0.02381]],[[51.57548,0.08995],[51.58088,0.08844],[51.58318,0.08819],[51.58966,0.08927],[51.59529,0.09091]],[[51.59529,0.09095],[51.58965,0.08934],[51.58317,0.08824],[51.58168,0.08832],[51.57761,0.08972],[51.57548,0.08999]],[[51.57632,0.06757],[51.57641,0.06479]],[[51.57641,0.06479],[51.57645,0.06208]],[[51.57645,0.06208],[51.57625,0.04547],[51.57656,0.03943]],[[51.57664,0.06487],[51.5766,0.06677]],[[51.57664,0.03943],[51.57634,0.04725],[51.57664,0.06209]],[[51.57664,0.06209],[51.57664,0.06487]],[[51.58096,0.02172],[51.5795,0.02065]],[[51.57952,0.0206],[51.58097,0.02168]],[[51.58118,0.02189],[51.58096,0.02172]],[[51.58097,0.02168],[51.58119,0.02184]],[[51.59582,0.02839],[51.58915,0.02667],[51.58118,0.02189]],[[51.58119,0.02184],[51.58915,0.02662],[51.59583,0.02833]],[[51.59529,0.09091],[51.59553,0.09098]],[[51.59552,0.09102],[51.59529,0.09095]],[[51.59595,0.09115],[51.59552,0.09102]],[[51.59553,0.09098],[51.59595,0.09111]],[[51.59635,0.02858],[51.59582,0.02839]],[[51.59583,0.02833],[51.59636,0.02851]],[[51.59595,0.09111],[51.60078,0.09263]],[[51.60078,0.09269],[51.59595,0.09115]],[[51.60663,0.03395],[51.59902,0.02974],[51.59635,0.02858]],[[51.59636,0.02851],[51.59904,0.02967],[51.60664,0.0339]],[[51.60078,0.09263],[51.60092,0.09267]],[[51.60092,0.09273],[51.60078,0.09269]],[[51.60092,0.09267],[51.60331,0.09341]],[[51.60131,0.09285],[51.60092,0.09273]],[[51.60258,0.09324],[51.60131,0.09285]],[[51.6033,0.09346],[51.60258,0.09324]],[[51.60397,0.09366],[51.6033,0.09346]],[[51.60331,0.09341],[51.60378,0.09355]],[[51.60378,0.09355],[51.60396,0.09361]],[[51.60396,0.09361],[51.60412,0.09366]],[[51.60413,0.09371],[51.60397,0.09366]],[[51.60412,0.09366],[51.60419,0.09368]],[[51.61316,0.09255],[51.61109,0.09448],[51.60979,0.09515],[51.60882,0.09514],[51.60413,0.09371]],[[51.60419,0.09368],[51.60566,0.09413]],[[51.60566,0.09413],[51.60978,0.09508],[51.61183,0.09385],[51.61314,0.09251]],[[51.61579,0.04086],[51.6095,0.03584],[51.60663,0.03395]],[[51.60664,0.0339],[51.60951,0.03579],[51.61581,0.0408]],[[51.61314,0.09251],[51.61437,0.08918]],[[51.6144,0.0892],[51.61316,0.09255]],[[51.61437,0.08918],[51.61529,0.08609]],[[51.61534,0.08611],[51.6144,0.0892]],[[51.61529,0.08609],[51.61633,0.08222],[51.61769,0.07552]],[[51.61771,0.07553],[51.61637,0.08226],[51.61534,0.08611]],[[51.61747,0.0461],[51.61673,0.04249],[51.61579,0.04086]],[[51.6252,0.04662],[51.62043,0.04435],[51.61579,0.04086]],[[51.61581,0.0408],[51.61625,0.04138]],[[51.61581,0.0408],[51.62088,0.04457],[51.6252,0.04656]],[[51.61625,0.04138],[51.6169,0.04292],[51.61749,0.04609]],[[51.6175,0.04631],[51.61747,0.0461]],[[51.61749,0.04609],[51.61753,0.0463]],[[51.61861,0.05321],[51.6175,0.04631]],[[51.61753,0.0463],[51.61864,0.05319]],[[51.61769,0.07552],[51.61939,0.06342]],[[51.61943,0.06342],[51.61771,0.07553]],[[51.61869,0.05371],[51.61861,0.05321]],[[51.61864,0.05319],[51.61872,0.0537]],[[51.61945,0.06123],[51.61935,0.0586],[51.61869,0.05371]],[[51.61872,0.0537],[51.61938,0.0586],[51.61948,0.06123]],[[51.61939,0.06342],[51.61942,0.06261]],[[51.61942,0.06261],[51.61945,0.06151]],[[51.61946,0.06261],[51.61943,0.06342]],[[51.61945,0.06151],[51.61945,0.06123]],[[51.61948,0.06151],[51.61946,0.06261]],[[51.61948,0.06123],[51.61948,0.06151]],[[51.6252,0.04656],[51.62533,0.0466]],[[51.62532,0.04666],[51.6252,0.04662]],[[51.63977,0.05384],[51.63654,0.05257],[51.63083,0.04867],[51.62532,0.04666]],[[51.62533,0.0466],[51.63085,0.04859],[51.63655,0.0525],[51.64021,0.054],[51.64116,0.05498],[51.64179,0.05638]],[[51.64195,0.0573],[51.64089,0.05491],[51.63977,0.05384]],[[51.64179,0.05638],[51.64202,0.05742]],[[51.64198,0.05744],[51.64195,0.0573]],[[51.64204,0.05773],[51.64198,0.05744]],[[51.64202,0.05742],[51.64208,0.05773]],[[51.64211,0.06927],[51.64204,0.05773]],[[51.64208,0.05773],[51.64216,0.06926]],[[51.64214,0.06951],[51.64211,0.06927]],[[51.64473,0.08229],[51.64313,0.07654],[51.64214,0.06951]],[[51.64216,0.06926],[51.64217,0.0695]],[[51.64217,0.0695],[51.64317,0.07651],[51.64476,0.08226]],[[51.64486,0.08261],[51.64473,0.08229]],[[51.64476,0.08226],[51.64489,0.08259]],[[51.66993,0.10253],[51.66234,0.09999],[51.6575,0.09639],[51.65296,0.09363],[51.65015,0.09106],[51.6479,0.08833],[51.64608,0.08532],[51.64486,0.08261]],[[51.64489,0.08259],[51.64604,0.08512],[51.64918,0.08987],[51.65297,0.09359],[51.65751,0.09633],[51.66235,0.09994],[51.66436,0.10084],[51.66753,0.10148],[51.66993,0.10249]],[[51.66993,0.10249],[51.67172,0.10327]],[[51.67171,0.10332],[51.66993,0.10253]],[[51.68766,0.11039],[51.67171,0.10332]],[[51.67172,0.10327],[51.68771,0.11035]],[[51.68783,0.11047],[51.68766,0.11039]],[[51.68771,0.11035],[51.68784,0.11041]],[[51.69168,0.11232],[51.68783,0.11047]],[[51.68784,0.11041],[51.6906,0.11162],[51.69278,0.11318]],[[51.69341,0.11381],[51.69168,0.11232]],[[51.69278,0.11318],[51.6936,0.11392]]]},{"ref":"Circle","name":"Circle line: Edgware Road → Hammersmith","colour":"#ffd329","segs":[[[51.49193,-0.15322],[51.49206,-0.15505]],[[51.49195,-0.15261],[51.49193,-0.15322]],[[51.49238,-0.15031],[51.49195,-0.15261]],[[51.49209,-0.15504],[51.49196,-0.15323]],[[51.49196,-0.15323],[51.49197,-0.15261]],[[51.49197,-0.15261],[51.49241,-0.15034]],[[51.49206,-0.15505],[51.49225,-0.15605]],[[51.49227,-0.15604],[51.49209,-0.15504]],[[51.49225,-0.15605],[51.49337,-0.16013],[51.49374,-0.16327]],[[51.49377,-0.16328],[51.49333,-0.15974],[51.49227,-0.15604]],[[51.49248,-0.15008],[51.49238,-0.15031]],[[51.49241,-0.15034],[51.4925,-0.1501]],[[51.49627,-0.14471],[51.49566,-0.14638],[51.49355,-0.1483],[51.49248,-0.15008]],[[51.4925,-0.1501],[51.49364,-0.14825],[51.49568,-0.14642],[51.4963,-0.14472]],[[51.4937,-0.22499],[51.49472,-0.22519]],[[51.49545,-0.22528],[51.4937,-0.22495]],[[51.49374,-0.16327],[51.49377,-0.16381]],[[51.49406,-0.17373],[51.49376,-0.18019]],[[51.49376,-0.18019],[51.49494,-0.18542]],[[51.49377,-0.16381],[51.49392,-0.16749]],[[51.4938,-0.16386],[51.49377,-0.16328]],[[51.49395,-0.16746],[51.4938,-0.16386]],[[51.49392,-0.16749],[51.49393,-0.16771]],[[51.49393,-0.16771],[51.49399,-0.16926]],[[51.49396,-0.16767],[51.49395,-0.16746]],[[51.49403,-0.16926],[51.49396,-0.16767]],[[51.49399,-0.16926],[51.49406,-0.17373]],[[51.4942,-0.17375],[51.49403,-0.16926]],[[51.49444,-0.18259],[51.49375,-0.17969],[51.4942,-0.17375]],[[51.49496,-0.18519],[51.49444,-0.18259]],[[51.49472,-0.22519],[51.49678,-0.22559]],[[51.49494,-0.18542],[51.49545,-0.18673],[51.49616,-0.18761]],[[51.49501,-0.18536],[51.49496,-0.18519]],[[51.49617,-0.18756],[51.49549,-0.18663],[51.49501,-0.18536]],[[51.49585,-0.22536],[51.49545,-0.22528]],[[51.49718,-0.22563],[51.49585,-0.22536]],[[51.49616,-0.18761],[51.49855,-0.18979]],[[51.49857,-0.18975],[51.49617,-0.18756]],[[51.49628,-0.1446],[51.49627,-0.14471]],[[51.49634,-0.14331],[51.49628,-0.1446]],[[51.4963,-0.14472],[51.49632,-0.1446]],[[51.49632,-0.1446],[51.49637,-0.14332]],[[51.49635,-0.14323],[51.49634,-0.14331]],[[51.49751,-0.13872],[51.49635,-0.14323]],[[51.49637,-0.14332],[51.49637,-0.14324]],[[51.49637,-0.14324],[51.49754,-0.13873]],[[51.49678,-0.22559],[51.49721,-0.22569]],[[51.51655,-0.21323],[51.512,-0.21977],[51.50987,-0.22407],[51.50829,-0.2256],[51.5034,-0.22677],[51.49718,-0.22563]],[[51.49721,-0.22569],[51.50331,-0.22685],[51.50837,-0.22562],[51.51008,-0.22384],[51.51199,-0.21988],[51.51659,-0.21332]],[[51.49755,-0.13855],[51.49751,-0.13872]],[[51.49754,-0.13873],[51.49758,-0.13857]],[[51.50084,-0.12583],[51.49977,-0.12903],[51.49955,-0.13359],[51.49895,-0.13548],[51.49755,-0.13855]],[[51.49758,-0.13857],[51.49905,-0.13535],[51.49959,-0.13359],[51.49981,-0.12904],[51.50088,-0.12587]],[[51.49855,-0.18979],[51.49913,-0.19075]],[[51.49918,-0.19076],[51.49857,-0.18975]],[[51.49913,-0.19075],[51.50044,-0.19217]],[[51.50045,-0.19213],[51.49918,-0.19076]],[[51.50044,-0.19217],[51.5005,-0.19223]],[[51.50051,-0.1922],[51.50045,-0.19213]],[[51.5005,-0.19223],[51.50164,-0.19322],[51.50405,-0.19431]],[[51.50406,-0.19424],[51.50166,-0.19317],[51.50051,-0.1922]],[[51.50761,-0.12204],[51.50639,-0.12285],[51.50237,-0.12381],[51.50165,-0.12436],[51.50084,-0.12583]],[[51.50088,-0.12587],[51.50143,-0.12472],[51.50224,-0.12393],[51.50621,-0.12298],[51.50762,-0.12211]],[[51.50405,-0.19431],[51.50414,-0.19433]],[[51.50415,-0.19427],[51.50406,-0.19424]],[[51.50414,-0.19433],[51.50642,-0.19518]],[[51.50642,-0.19512],[51.50415,-0.19427]],[[51.50642,-0.19518],[51.50683,-0.19533]],[[51.50684,-0.19528],[51.50642,-0.19512]],[[51.50683,-0.19533],[51.50786,-0.19572]],[[51.50787,-0.19568],[51.50684,-0.19528]],[[51.51088,-0.11481],[51.50931,-0.11984],[51.50842,-0.1213],[51.50761,-0.12204]],[[51.50762,-0.12211],[51.50921,-0.12013],[51.51091,-0.11481]],[[51.50786,-0.19572],[51.50809,-0.19578]],[[51.5081,-0.19574],[51.50787,-0.19568]],[[51.50809,-0.19578],[51.50881,-0.19606]],[[51.50882,-0.19602],[51.5081,-0.19574]],[[51.50881,-0.19606],[51.51032,-0.19575]],[[51.51029,-0.19569],[51.50882,-0.19602]],[[51.50956,-0.07844],[51.50971,-0.08065],[51.51042,-0.08271],[51.51061,-0.08432]],[[51.50972,-0.07772],[51.50956,-0.07844]],[[51.50994,-0.0762],[51.50972,-0.07772]],[[51.51064,-0.08432],[51.51045,-0.08269],[51.50968,-0.08032],[51.50959,-0.07846],[51.50981,-0.07773]],[[51.50981,-0.07773],[51.50999,-0.07625]],[[51.51023,-0.07586],[51.50994,-0.0762]],[[51.50999,-0.07625],[51.51027,-0.07586]],[[51.51033,-0.07575],[51.51023,-0.07586]],[[51.51027,-0.07586],[51.51034,-0.07579]],[[51.51048,-0.19554],[51.51029,-0.19569]],[[51.51032,-0.19575],[51.51056,-0.19555]],[[51.51338,-0.07532],[51.51252,-0.07555],[51.5113,-0.07533],[51.51033,-0.07575]],[[51.51034,-0.07579],[51.51129,-0.07538],[51.51252,-0.0756],[51.51337,-0.07537]],[[51.51194,-0.19183],[51.51142,-0.19407],[51.51048,-0.19554]],[[51.51056,-0.19555],[51.51146,-0.1941],[51.51197,-0.19184]],[[51.51061,-0.08432],[51.51088,-0.08682]],[[51.5109,-0.08673],[51.51064,-0.08432]],[[51.51115,-0.11291],[51.51088,-0.11481]],[[51.51088,-0.08682],[51.51148,-0.0903]],[[51.51151,-0.0903],[51.5109,-0.08673]],[[51.51091,-0.11481],[51.51118,-0.11291]],[[51.51172,-0.10325],[51.51117,-0.10569],[51.51115,-0.11291]],[[51.51118,-0.11291],[51.5112,-0.10569],[51.51175,-0.10326]],[[51.51148,-0.0903],[51.51182,-0.09518]],[[51.51179,-0.10311],[51.51212,-0.10146],[51.51187,-0.09643],[51.51197,-0.09437],[51.51151,-0.0903]],[[51.51177,-0.10309],[51.51172,-0.10325]],[[51.51175,-0.10326],[51.51179,-0.10311]],[[51.51181,-0.09534],[51.51209,-0.10146],[51.51177,-0.10309]],[[51.51182,-0.09527],[51.51181,-0.09534]],[[51.51182,-0.09518],[51.51182,-0.09527]],[[51.51195,-0.1917],[51.51194,-0.19183]],[[51.51212,-0.19025],[51.51195,-0.1917]],[[51.51197,-0.19184],[51.51199,-0.19171]],[[51.51199,-0.19171],[51.51216,-0.19026]],[[51.51216,-0.18979],[51.51212,-0.19025]],[[51.51216,-0.19026],[51.51219,-0.1898]],[[51.51217,-0.18965],[51.51216,-0.18979]],[[51.51221,-0.18911],[51.51217,-0.18965]],[[51.51219,-0.1898],[51.5122,-0.18967]],[[51.5122,-0.18967],[51.51225,-0.18912]],[[51.51223,-0.18891],[51.51221,-0.18911]],[[51.5123,-0.18791],[51.51223,-0.18891]],[[51.51225,-0.18912],[51.51226,-0.18892]],[[51.51226,-0.18892],[51.51233,-0.18792]],[[51.51258,-0.18425],[51.5123,-0.18791]],[[51.51233,-0.18792],[51.51261,-0.18427]],[[51.5126,-0.18364],[51.51258,-0.18425]],[[51.51291,-0.18142],[51.5126,-0.18364]],[[51.51261,-0.18427],[51.51263,-0.18365]],[[51.51263,-0.18365],[51.51293,-0.18143]],[[51.51294,-0.1813],[51.51291,-0.18142]],[[51.51293,-0.18143],[51.51296,-0.1813]],[[51.51514,-0.17596],[51.5134,-0.17959],[51.51294,-0.1813]],[[51.51296,-0.1813],[51.51344,-0.1796],[51.51517,-0.176]],[[51.51337,-0.07537],[51.51361,-0.0754]],[[51.51396,-0.07538],[51.51338,-0.07532]],[[51.51361,-0.0754],[51.51376,-0.07546]],[[51.51376,-0.07546],[51.5139,-0.07555]],[[51.5139,-0.07555],[51.5141,-0.07572]],[[51.51417,-0.07549],[51.51396,-0.07538]],[[51.5141,-0.07572],[51.51436,-0.07596]],[[51.51444,-0.07575],[51.51417,-0.07549]],[[51.51436,-0.07596],[51.5144,-0.076]],[[51.5144,-0.076],[51.51519,-0.07671]],[[51.51448,-0.07579],[51.51444,-0.07575]],[[51.515,-0.07636],[51.51448,-0.07579]],[[51.51514,-0.07657],[51.515,-0.07636]],[[51.5157,-0.17491],[51.51514,-0.17596]],[[51.51695,-0.08086],[51.51624,-0.07862],[51.51514,-0.07657]],[[51.51517,-0.176],[51.51573,-0.17495]],[[51.51519,-0.07671],[51.51621,-0.07864],[51.51691,-0.0809]],[[51.51606,-0.17428],[51.5157,-0.17491]],[[51.51573,-0.17495],[51.51609,-0.17433]],[[51.51632,-0.17381],[51.51606,-0.17428]],[[51.51609,-0.17433],[51.51635,-0.17386]],[[51.51721,-0.17223],[51.51632,-0.17381]],[[51.51635,-0.17386],[51.51723,-0.17226]],[[51.51744,-0.2102],[51.51655,-0.21323]],[[51.51659,-0.21332],[51.51748,-0.21023]],[[51.51691,-0.0809],[51.51706,-0.08183]],[[51.51709,-0.08182],[51.51695,-0.08086]],[[51.51706,-0.08183],[51.51732,-0.0834]],[[51.51735,-0.08339],[51.51709,-0.08182]],[[51.51738,-0.17192],[51.51721,-0.17223]],[[51.51723,-0.17226],[51.5174,-0.17194]],[[51.51732,-0.0834],[51.51747,-0.0844]],[[51.5175,-0.08437],[51.51735,-0.08339]],[[51.51746,-0.17181],[51.51738,-0.17192]],[[51.5174,-0.17194],[51.51749,-0.17185]],[[51.51751,-0.20989],[51.51744,-0.2102]],[[51.51767,-0.17157],[51.51746,-0.17181]],[[51.51747,-0.0844],[51.51827,-0.08883]],[[51.51748,-0.21023],[51.51756,-0.2099]],[[51.51749,-0.17185],[51.51767,-0.17165]],[[51.51831,-0.08882],[51.5175,-0.08437]],[[51.51837,-0.2072],[51.51751,-0.20989]],[[51.51756,-0.2099],[51.51843,-0.20723]],[[51.51767,-0.17165],[51.5183,-0.17075]],[[51.51827,-0.17071],[51.51767,-0.17157]],[[51.51818,-0.1776],[51.51758,-0.17647],[51.51745,-0.17568],[51.5183,-0.17075]],[[51.51861,-0.17899],[51.51818,-0.1776]],[[51.51827,-0.17071],[51.5174,-0.17567],[51.51753,-0.1765],[51.51821,-0.17794]],[[51.51821,-0.17794],[51.51856,-0.17907]],[[51.51838,-0.17053],[51.51827,-0.17071]],[[51.51827,-0.08883],[51.52004,-0.09653]],[[51.5183,-0.17075],[51.51962,-0.16838]],[[51.52007,-0.09649],[51.51831,-0.08882]],[[51.51848,-0.20698],[51.51837,-0.2072]],[[51.5194,-0.16871],[51.51838,-0.17053]],[[51.51843,-0.20723],[51.51853,-0.20702]],[[51.5209,-0.20084],[51.52095,-0.20255],[51.52059,-0.2039],[51.51848,-0.20698]],[[51.51853,-0.20702],[51.51954,-0.20555]],[[51.51856,-0.17907],[51.51868,-0.18155]],[[51.51871,-0.18155],[51.51861,-0.17899]],[[51.51868,-0.18155],[51.51892,-0.18663]],[[51.519,-0.18662],[51.51871,-0.18155]],[[51.51892,-0.18663],[51.5196,-0.19339]],[[51.51966,-0.1937],[51.519,-0.18662]],[[51.51957,-0.16833],[51.5194,-0.16871]],[[51.51954,-0.20555],[51.52082,-0.20335],[51.52092,-0.20085]],[[51.5197,-0.16805],[51.51957,-0.16833]],[[51.51993,-0.16721],[51.51957,-0.16833]],[[51.5196,-0.19339],[51.51969,-0.19502]],[[51.51962,-0.16838],[51.51973,-0.16809]],[[51.51962,-0.16838],[51.52015,-0.16732]],[[51.52017,-0.09951],[51.51963,-0.10268]],[[51.51963,-0.10268],[51.52004,-0.10432]],[[51.51965,-0.10264],[51.52019,-0.09953]],[[51.52005,-0.10428],[51.51965,-0.10264]],[[51.51972,-0.19514],[51.51966,-0.1937]],[[51.51969,-0.19502],[51.52082,-0.20041]],[[51.51989,-0.1677],[51.5197,-0.16805]],[[51.52084,-0.20043],[51.51972,-0.19514]],[[51.51973,-0.16809],[51.51989,-0.1677]],[[51.52006,-0.16727],[51.51989,-0.1677]],[[51.52057,-0.16565],[51.51993,-0.16721]],[[51.52004,-0.10432],[51.52014,-0.10454]],[[51.52004,-0.09653],[51.52021,-0.09724]],[[51.52036,-0.10478],[51.52005,-0.10428]],[[51.52038,-0.16621],[51.52006,-0.16727]],[[51.52024,-0.09723],[51.52007,-0.09649]],[[51.52014,-0.10454],[51.52034,-0.10483]],[[51.52015,-0.16732],[51.52031,-0.16684]],[[51.52024,-0.09779],[51.52017,-0.09951]],[[51.52019,-0.09953],[51.52027,-0.0978]],[[51.52021,-0.09724],[51.52023,-0.09741]],[[51.52023,-0.09741],[51.52024,-0.09779]],[[51.52027,-0.0978],[51.52024,-0.09723]],[[51.52031,-0.16684],[51.52059,-0.16564]],[[51.52034,-0.10483],[51.52215,-0.10638]],[[51.52215,-0.10632],[51.52036,-0.10478]],[[51.52073,-0.16499],[51.52057,-0.16565]],[[51.52059,-0.16564],[51.52075,-0.16501]],[[51.52246,-0.15549],[51.52073,-0.16499]],[[51.52075,-0.16501],[51.5225,-0.15551]],[[51.52082,-0.20041],[51.5209,-0.20084]],[[51.52092,-0.20085],[51.52084,-0.20043]],[[51.52215,-0.10638],[51.5223,-0.10652]],[[51.52231,-0.10646],[51.52215,-0.10632]],[[51.5223,-0.10652],[51.52243,-0.10664]],[[51.52245,-0.1066],[51.52231,-0.10646]],[[51.52243,-0.10664],[51.52252,-0.10675]],[[51.52254,-0.10671],[51.52245,-0.1066]],[[51.52328,-0.14894],[51.52301,-0.15237],[51.52246,-0.15549]],[[51.5225,-0.15551],[51.52305,-0.15239],[51.52332,-0.14897]],[[51.52252,-0.10675],[51.52302,-0.10753]],[[51.523,-0.10745],[51.52254,-0.10671]],[[51.52315,-0.10768],[51.523,-0.10745]],[[51.52302,-0.10753],[51.52315,-0.10775]],[[51.52315,-0.10775],[51.52327,-0.10794]],[[51.52329,-0.1079],[51.52315,-0.10768]],[[51.52327,-0.10794],[51.52754,-0.11457]],[[51.52382,-0.14448],[51.5238,-0.14595],[51.52328,-0.14894]],[[51.52756,-0.11452],[51.52329,-0.1079]],[[51.52332,-0.14897],[51.52385,-0.14593],[51.52384,-0.14448]],[[51.52394,-0.14243],[51.52381,-0.14435]],[[51.52381,-0.14435],[51.52382,-0.14448]],[[51.52383,-0.14435],[51.52397,-0.14244]],[[51.52384,-0.14448],[51.52383,-0.14435]],[[51.5254,-0.13636],[51.52394,-0.14243]],[[51.52397,-0.14244],[51.52543,-0.13637]],[[51.52629,-0.13381],[51.5254,-0.13636]],[[51.52543,-0.13637],[51.52632,-0.13384]],[[51.53036,-0.12289],[51.52915,-0.12561],[51.52629,-0.13381]],[[51.52632,-0.13384],[51.5304,-0.12291]],[[51.52754,-0.11457],[51.52783,-0.11503]],[[51.52786,-0.11499],[51.52756,-0.11452]],[[51.52783,-0.11503],[51.52851,-0.11615]],[[51.52853,-0.11611],[51.52786,-0.11499]],[[51.52851,-0.11615],[51.52867,-0.11643]],[[51.52869,-0.11637],[51.52853,-0.11611]],[[51.52867,-0.11643],[51.52878,-0.11662]],[[51.5288,-0.11656],[51.52869,-0.11637]],[[51.52878,-0.11662],[51.52907,-0.11712]],[[51.52908,-0.11705],[51.5288,-0.11656]],[[51.52907,-0.11712],[51.52918,-0.11732]],[[51.52919,-0.11725],[51.52908,-0.11705]],[[51.52918,-0.11732],[51.52946,-0.11781]],[[51.52947,-0.11774],[51.52919,-0.11725]],[[51.52946,-0.11781],[51.52953,-0.11793]],[[51.52954,-0.11785],[51.52947,-0.11774]],[[51.52953,-0.11793],[51.5298,-0.1184]],[[51.52982,-0.11833],[51.52954,-0.11785]],[[51.5298,-0.1184],[51.52988,-0.11853]],[[51.5299,-0.11848],[51.52982,-0.11833]],[[51.52988,-0.11853],[51.53009,-0.11897]],[[51.53011,-0.11891],[51.5299,-0.11848]],[[51.53009,-0.11897],[51.53014,-0.11908]],[[51.53015,-0.11902],[51.53011,-0.11891]],[[51.53014,-0.11908],[51.53035,-0.11975]],[[51.53039,-0.11979],[51.53015,-0.11902]],[[51.53035,-0.11975],[51.53042,-0.12003]],[[51.53053,-0.1205],[51.53062,-0.12173],[51.53036,-0.12289]],[[51.53044,-0.11997],[51.53039,-0.11979]],[[51.5304,-0.12291],[51.53066,-0.12161],[51.53057,-0.12051]],[[51.53042,-0.12003],[51.53053,-0.1205]],[[51.53057,-0.12051],[51.53044,-0.11997]]]},{"ref":"District","name":"District line: Barking → Wimbledon","colour":"#00a166","segs":[[[51.42329,-0.2035],[51.42159,-0.20603]],[[51.42386,-0.20268],[51.42166,-0.20616]],[[51.42329,-0.2035],[51.42386,-0.2026]],[[51.42386,-0.20268],[51.42409,-0.20236]],[[51.42445,-0.20185],[51.42386,-0.2026]],[[51.42409,-0.20236],[51.42439,-0.20198]],[[51.42439,-0.20198],[51.4283,-0.19878],[51.42957,-0.19809],[51.43149,-0.19783],[51.43311,-0.19843]],[[51.43256,-0.19804],[51.43087,-0.19776],[51.42921,-0.19818],[51.42445,-0.20185]],[[51.4326,-0.19806],[51.43256,-0.19804]],[[51.43311,-0.19826],[51.4326,-0.19806]],[[51.43311,-0.19843],[51.43363,-0.19879]],[[51.43884,-0.20436],[51.43728,-0.20285],[51.43503,-0.19995],[51.43311,-0.19826]],[[51.43363,-0.19879],[51.43883,-0.20443]],[[51.43883,-0.20443],[51.43898,-0.20454]],[[51.43899,-0.20448],[51.43884,-0.20436]],[[51.43898,-0.20454],[51.44156,-0.20598],[51.44452,-0.20657]],[[51.44462,-0.20641],[51.44157,-0.20591],[51.43899,-0.20448]],[[51.44452,-0.20657],[51.4449,-0.20662]],[[51.4451,-0.20646],[51.44462,-0.20641]],[[51.4449,-0.20662],[51.44754,-0.20691],[51.44981,-0.20764]],[[51.44982,-0.20758],[51.4451,-0.20646]],[[51.44981,-0.20764],[51.44994,-0.20771]],[[51.44995,-0.20765],[51.44982,-0.20758]],[[51.44994,-0.20771],[51.45237,-0.20938]],[[51.45238,-0.20934],[51.44995,-0.20765]],[[51.45237,-0.20938],[51.45248,-0.20947]],[[51.45248,-0.20942],[51.45238,-0.20934]],[[51.45248,-0.20947],[51.45262,-0.20959]],[[51.45263,-0.20954],[51.45248,-0.20942]],[[51.45262,-0.20959],[51.45477,-0.21184]],[[51.45479,-0.21179],[51.45263,-0.20954]],[[51.45477,-0.21184],[51.45605,-0.21269],[51.45753,-0.21225]],[[51.4575,-0.21221],[51.45606,-0.21264],[51.45479,-0.21179]],[[51.45776,-0.212],[51.4575,-0.21221]],[[51.45753,-0.21225],[51.45778,-0.21204]],[[51.45805,-0.21176],[51.45776,-0.212]],[[51.45778,-0.21204],[51.45806,-0.21181]],[[51.45934,-0.21092],[51.45805,-0.21176]],[[51.45806,-0.21181],[51.45935,-0.21096]],[[51.46412,-0.21036],[51.46226,-0.21013],[51.45934,-0.21092]],[[51.45935,-0.21096],[51.4623,-0.21017],[51.46414,-0.21041]],[[51.46352,-0.29824],[51.4633,-0.30112]],[[51.46338,-0.30114],[51.46355,-0.29824],[51.46398,-0.2958]],[[51.46361,-0.29762],[51.46352,-0.29824]],[[51.46375,-0.29684],[51.46361,-0.29762]],[[51.46395,-0.29579],[51.46375,-0.29684]],[[51.46742,-0.28842],[51.46569,-0.29004],[51.46487,-0.29132],[51.46395,-0.29579]],[[51.46398,-0.2958],[51.4646,-0.29224],[51.46501,-0.2911],[51.46593,-0.28983],[51.46743,-0.28846]],[[51.46429,-0.21034],[51.46412,-0.21036]],[[51.46414,-0.21041],[51.4643,-0.21039]],[[51.46439,-0.21032],[51.46429,-0.21034]],[[51.4643,-0.21039],[51.46442,-0.21036]],[[51.46711,-0.20899],[51.46439,-0.21032]],[[51.46442,-0.21036],[51.46712,-0.20904]],[[51.46721,-0.20897],[51.46711,-0.20899]],[[51.46712,-0.20904],[51.46721,-0.20902]],[[51.46721,-0.20902],[51.46768,-0.20892]],[[51.46768,-0.20887],[51.46721,-0.20897]],[[51.46788,-0.28804],[51.46742,-0.28842]],[[51.46743,-0.28846],[51.46789,-0.28809]],[[51.46768,-0.20892],[51.46778,-0.2089]],[[51.46778,-0.20885],[51.46768,-0.20887]],[[51.46778,-0.2089],[51.46935,-0.20858]],[[51.46935,-0.20853],[51.46778,-0.20885]],[[51.48024,-0.2831],[51.47707,-0.28496],[51.46962,-0.28714],[51.46788,-0.28804]],[[51.46789,-0.28809],[51.46962,-0.28718],[51.47708,-0.28501],[51.48027,-0.28314]],[[51.46935,-0.20858],[51.46957,-0.20845]],[[51.46953,-0.20842],[51.46935,-0.20853]],[[51.47049,-0.20704],[51.46953,-0.20842]],[[51.46957,-0.20845],[51.47052,-0.20708]],[[51.47058,-0.20688],[51.47049,-0.20704]],[[51.47052,-0.20708],[51.4706,-0.20692]],[[51.47138,-0.20599],[51.47058,-0.20688]],[[51.4706,-0.20692],[51.47135,-0.20607]],[[51.47135,-0.20607],[51.47153,-0.20598]],[[51.47154,-0.20592],[51.47138,-0.20599]],[[51.47153,-0.20598],[51.4726,-0.20566],[51.4733,-0.20507]],[[51.47328,-0.20503],[51.47268,-0.20558],[51.47154,-0.20592]],[[51.47343,-0.20482],[51.47328,-0.20503]],[[51.4733,-0.20507],[51.47345,-0.20485]],[[51.47534,-0.201],[51.47343,-0.20482]],[[51.47345,-0.20485],[51.47535,-0.20105]],[[51.47539,-0.2009],[51.47534,-0.201]],[[51.47535,-0.20105],[51.47539,-0.20097]],[[51.47539,-0.20097],[51.47542,-0.20093]],[[51.47542,-0.20083],[51.47539,-0.2009]],[[51.47542,-0.20093],[51.47546,-0.20083]],[[51.4755,-0.20067],[51.47542,-0.20083]],[[51.47546,-0.20083],[51.47553,-0.20067]],[[51.47939,-0.19584],[51.47738,-0.19714],[51.4755,-0.20067]],[[51.47553,-0.20067],[51.4774,-0.19719],[51.47939,-0.19588]],[[51.47939,-0.19588],[51.4812,-0.194]],[[51.48118,-0.19396],[51.47939,-0.19584]],[[51.48045,-0.28293],[51.48024,-0.2831]],[[51.48027,-0.28314],[51.48047,-0.28297]],[[51.48331,-0.28004],[51.48045,-0.28293]],[[51.48047,-0.28297],[51.48333,-0.28008]],[[51.48139,-0.19365],[51.48118,-0.19396]],[[51.4812,-0.194],[51.48141,-0.19369]],[[51.48148,-0.19353],[51.48139,-0.19365]],[[51.48141,-0.19369],[51.4815,-0.19357]],[[51.48246,-0.19208],[51.48148,-0.19353]],[[51.4815,-0.19357],[51.48248,-0.19211]],[[51.48405,-0.19173],[51.48336,-0.19151],[51.48246,-0.19208]],[[51.48248,-0.19211],[51.48337,-0.19156],[51.48404,-0.19177]],[[51.48475,-0.27856],[51.48331,-0.28004]],[[51.48333,-0.28008],[51.48477,-0.27859]],[[51.48404,-0.19177],[51.48589,-0.19359],[51.48715,-0.19539]],[[51.48717,-0.19536],[51.48574,-0.19335],[51.48405,-0.19173]],[[51.48491,-0.2784],[51.48475,-0.27856]],[[51.48477,-0.27859],[51.48493,-0.27843]],[[51.485,-0.27831],[51.48491,-0.2784]],[[51.48493,-0.27843],[51.48502,-0.27834]],[[51.4864,-0.2773],[51.485,-0.27831]],[[51.48502,-0.27834],[51.48642,-0.27734]],[[51.4865,-0.27725],[51.4864,-0.2773]],[[51.48642,-0.27734],[51.48652,-0.27729]],[[51.489,-0.27669],[51.4865,-0.27725]],[[51.48652,-0.27729],[51.48903,-0.27676]],[[51.48715,-0.19539],[51.48878,-0.19705],[51.4897,-0.19681],[51.49041,-0.19579]],[[51.49037,-0.19571],[51.48951,-0.19636],[51.48873,-0.1965],[51.48788,-0.19615],[51.48717,-0.19536]],[[51.48936,-0.27664],[51.489,-0.27669]],[[51.48903,-0.27676],[51.48939,-0.27672]],[[51.49168,-0.27511],[51.49064,-0.27607],[51.48936,-0.27664]],[[51.48939,-0.27672],[51.49066,-0.27623],[51.49173,-0.27523]],[[51.49038,-0.19574],[51.48976,-0.19662],[51.48949,-0.19771],[51.48968,-0.19975]],[[51.48968,-0.19975],[51.49034,-0.20083]],[[51.49052,-0.20095],[51.48986,-0.19899],[51.48985,-0.19771],[51.49018,-0.19634]],[[51.49064,-0.20106],[51.49016,-0.20012],[51.4899,-0.19888],[51.49018,-0.19634]],[[51.49018,-0.19634],[51.49043,-0.19583]],[[51.49044,-0.20681],[51.48997,-0.20981],[51.49019,-0.21313]],[[51.49019,-0.21313],[51.49022,-0.21361]],[[51.49022,-0.21361],[51.49026,-0.21448]],[[51.49026,-0.21448],[51.49017,-0.21968],[51.49046,-0.22107],[51.49117,-0.22236]],[[51.49033,-0.21314],[51.49008,-0.20981],[51.49047,-0.20682]],[[51.49038,-0.21358],[51.49033,-0.21314]],[[51.49034,-0.20083],[51.49042,-0.20094]],[[51.49086,-0.19488],[51.49037,-0.19571]],[[51.49043,-0.21449],[51.49038,-0.21358]],[[51.49058,-0.19546],[51.49038,-0.19574]],[[51.49041,-0.19579],[51.49084,-0.19512]],[[51.49042,-0.20094],[51.49095,-0.20176]],[[51.49042,-0.20094],[51.49401,-0.20435]],[[51.49118,-0.22204],[51.49061,-0.22102],[51.4903,-0.21955],[51.49043,-0.21449]],[[51.49043,-0.19583],[51.49055,-0.19563]],[[51.49057,-0.20633],[51.49044,-0.20681]],[[51.49047,-0.20682],[51.4906,-0.20634]],[[51.49099,-0.20178],[51.49052,-0.20095]],[[51.49055,-0.19563],[51.49084,-0.19512]],[[51.49055,-0.19563],[51.4914,-0.19452]],[[51.49122,-0.20272],[51.49118,-0.20419],[51.49057,-0.20633]],[[51.49131,-0.19436],[51.49058,-0.19546]],[[51.49086,-0.19488],[51.49058,-0.19546]],[[51.4906,-0.20634],[51.49122,-0.20421],[51.49126,-0.20271]],[[51.49401,-0.20435],[51.49064,-0.20106]],[[51.49084,-0.19512],[51.49133,-0.19439]],[[51.49125,-0.19427],[51.49086,-0.19488]],[[51.49095,-0.20176],[51.4911,-0.20218]],[[51.49113,-0.20215],[51.49099,-0.20178]],[[51.4911,-0.20218],[51.4912,-0.20257]],[[51.49123,-0.20255],[51.49113,-0.20215]],[[51.49117,-0.22236],[51.49145,-0.2227]],[[51.49147,-0.22237],[51.49118,-0.22204]],[[51.4912,-0.20257],[51.49122,-0.20272]],[[51.49126,-0.20271],[51.49123,-0.20255]],[[51.49196,-0.1932],[51.49125,-0.19427]],[[51.49201,-0.19332],[51.49131,-0.19436]],[[51.49133,-0.19439],[51.49203,-0.19335]],[[51.4914,-0.19452],[51.49209,-0.19347]],[[51.49145,-0.2227],[51.49149,-0.22274]],[[51.49159,-0.22248],[51.49147,-0.22237]],[[51.49149,-0.22274],[51.49165,-0.22291]],[[51.49176,-0.22263],[51.49159,-0.22248]],[[51.49165,-0.22291],[51.49255,-0.22386]],[[51.49182,-0.27494],[51.49168,-0.27511]],[[51.49173,-0.27523],[51.49187,-0.27504]],[[51.49266,-0.22357],[51.49176,-0.22263]],[[51.49253,-0.27376],[51.49182,-0.27494]],[[51.49187,-0.27504],[51.49257,-0.27381]],[[51.49193,-0.15322],[51.49206,-0.15505]],[[51.49195,-0.15261],[51.49193,-0.15322]],[[51.49238,-0.15031],[51.49195,-0.15261]],[[51.49259,-0.19246],[51.49196,-0.1932]],[[51.49209,-0.15504],[51.49196,-0.15323]],[[51.49196,-0.15323],[51.49197,-0.15261]],[[51.49197,-0.15261],[51.49241,-0.15034]],[[51.49261,-0.19249],[51.49201,-0.19332]],[[51.49203,-0.19335],[51.49263,-0.19253]],[[51.49206,-0.15505],[51.49225,-0.15605]],[[51.49209,-0.19347],[51.49265,-0.19257]],[[51.49227,-0.15604],[51.49209,-0.15504]],[[51.49225,-0.15605],[51.49337,-0.16013],[51.49374,-0.16327]],[[51.49377,-0.16328],[51.49333,-0.15974],[51.49227,-0.15604]],[[51.49248,-0.15008],[51.49238,-0.15031]],[[51.49241,-0.15034],[51.4925,-0.1501]],[[51.49627,-0.14471],[51.49566,-0.14638],[51.49355,-0.1483],[51.49248,-0.15008]],[[51.4925,-0.1501],[51.49364,-0.14825],[51.49568,-0.14642],[51.4963,-0.14472]],[[51.4929,-0.27297],[51.49253,-0.27376]],[[51.49255,-0.22386],[51.49292,-0.22432]],[[51.49257,-0.27381],[51.49294,-0.27301]],[[51.49267,-0.19235],[51.49259,-0.19246]],[[51.49298,-0.19195],[51.49261,-0.19249]],[[51.49263,-0.19253],[51.4936,-0.19112]],[[51.49265,-0.19257],[51.49362,-0.19116]],[[51.49304,-0.22411],[51.49266,-0.22357]],[[51.49298,-0.19195],[51.49267,-0.19235]],[[51.49353,-0.19105],[51.49267,-0.19235]],[[51.49405,-0.2674],[51.49365,-0.27062],[51.4929,-0.27297]],[[51.49292,-0.22432],[51.49362,-0.22649]],[[51.49294,-0.27301],[51.49369,-0.27064],[51.49408,-0.26741]],[[51.49357,-0.19109],[51.49298,-0.19195]],[[51.49377,-0.22666],[51.49304,-0.22411]],[[51.49424,-0.18976],[51.49353,-0.19105]],[[51.49484,-0.18851],[51.49357,-0.19109]],[[51.49362,-0.22649],[51.49359,-0.22953]],[[51.49359,-0.22953],[51.49402,-0.23583]],[[51.4936,-0.19112],[51.49406,-0.19035]],[[51.49362,-0.19116],[51.49436,-0.19004]],[[51.49374,-0.16327],[51.49377,-0.16381]],[[51.49406,-0.17373],[51.49376,-0.18019]],[[51.49376,-0.18019],[51.49492,-0.18561]],[[51.49379,-0.22951],[51.49377,-0.22666]],[[51.49377,-0.16381],[51.49392,-0.16749]],[[51.4938,-0.16386],[51.49377,-0.16328]],[[51.49385,-0.2304],[51.49379,-0.22951]],[[51.49395,-0.16746],[51.4938,-0.16386]],[[51.49408,-0.23412],[51.49385,-0.2304]],[[51.49392,-0.16749],[51.49393,-0.16771]],[[51.49393,-0.16771],[51.49399,-0.16926]],[[51.49396,-0.16767],[51.49395,-0.16746]],[[51.49403,-0.16926],[51.49396,-0.16767]],[[51.49399,-0.16926],[51.49406,-0.17373]],[[51.49401,-0.20435],[51.49594,-0.20774]],[[51.49402,-0.23583],[51.49465,-0.23979]],[[51.4942,-0.17375],[51.49403,-0.16926]],[[51.4948,-0.26024],[51.49405,-0.2674]],[[51.49406,-0.19035],[51.49436,-0.19004]],[[51.49406,-0.19035],[51.49457,-0.1893]],[[51.49408,-0.26741],[51.49469,-0.265],[51.49504,-0.2614]],[[51.49415,-0.23479],[51.49408,-0.23412]],[[51.49476,-0.23979],[51.49415,-0.23479]],[[51.49444,-0.18259],[51.49375,-0.17969],[51.4942,-0.17375]],[[51.49555,-0.18855],[51.49424,-0.18976]],[[51.49436,-0.19004],[51.49596,-0.18831]],[[51.49442,-0.26681],[51.49444,-0.26728]],[[51.49447,-0.26543],[51.49442,-0.26681]],[[51.49444,-0.26728],[51.49473,-0.26913],[51.49532,-0.27081],[51.49701,-0.27325],[51.49791,-0.27513]],[[51.49496,-0.18519],[51.49444,-0.18259]],[[51.49491,-0.26138],[51.49447,-0.26543]],[[51.49454,-0.26702],[51.49453,-0.26654]],[[51.49453,-0.26654],[51.49462,-0.26511]],[[51.49802,-0.27504],[51.49701,-0.27296],[51.49536,-0.27057],[51.4948,-0.26885],[51.49454,-0.26702]],[[51.49457,-0.1893],[51.4949,-0.18848]],[[51.49462,-0.26511],[51.49504,-0.2614]],[[51.49465,-0.23979],[51.49502,-0.24822]],[[51.49498,-0.24496],[51.49476,-0.23979]],[[51.49481,-0.26011],[51.4948,-0.26024]],[[51.49502,-0.25561],[51.49481,-0.26011]],[[51.49501,-0.18623],[51.49484,-0.18851]],[[51.4949,-0.18848],[51.49511,-0.18641]],[[51.495,-0.26032],[51.49491,-0.26138]],[[51.49492,-0.18561],[51.49497,-0.18587]],[[51.49499,-0.18537],[51.49496,-0.18519]],[[51.49497,-0.18587],[51.49501,-0.18623]],[[51.49499,-0.2453],[51.49498,-0.24496]],[[51.49513,-0.24821],[51.49499,-0.2453]],[[51.49506,-0.1859],[51.49499,-0.18537]],[[51.49501,-0.26013],[51.495,-0.26032]],[[51.49502,-0.25968],[51.49501,-0.26013]],[[51.49502,-0.25911],[51.49502,-0.25968]],[[51.49502,-0.25561],[51.49502,-0.25911]],[[51.49502,-0.25543],[51.49502,-0.25561]],[[51.49502,-0.25514],[51.49502,-0.25543]],[[51.49508,-0.25029],[51.49502,-0.25514]],[[51.49502,-0.24822],[51.49508,-0.25029]],[[51.49504,-0.2614],[51.49513,-0.26032]],[[51.49511,-0.18641],[51.49506,-0.1859]],[[51.49513,-0.26032],[51.49513,-0.26014]],[[51.49513,-0.26014],[51.49521,-0.25543]],[[51.49523,-0.25028],[51.49513,-0.24821]],[[51.49521,-0.25543],[51.49522,-0.25515]],[[51.49522,-0.25515],[51.49523,-0.25278]],[[51.49523,-0.25278],[51.49524,-0.2522]],[[51.49524,-0.2522],[51.49523,-0.25028]],[[51.49597,-0.18825],[51.49555,-0.18855]],[[51.49594,-0.20774],[51.49612,-0.20796]],[[51.49596,-0.18831],[51.49609,-0.18826]],[[51.49609,-0.1882],[51.49597,-0.18825]],[[51.49609,-0.18826],[51.49717,-0.18837],[51.49851,-0.18986]],[[51.49853,-0.18982],[51.49713,-0.1883],[51.49609,-0.1882]],[[51.49612,-0.20796],[51.49738,-0.20976]],[[51.49628,-0.1446],[51.49627,-0.14471]],[[51.49634,-0.14331],[51.49628,-0.1446]],[[51.4963,-0.14472],[51.49632,-0.1446]],[[51.49632,-0.1446],[51.49637,-0.14332]],[[51.49635,-0.14323],[51.49634,-0.14331]],[[51.49751,-0.13872],[51.49635,-0.14323]],[[51.49637,-0.14332],[51.49637,-0.14324]],[[51.49637,-0.14324],[51.49754,-0.13873]],[[51.49755,-0.13855],[51.49751,-0.13872]],[[51.49754,-0.13873],[51.49758,-0.13857]],[[51.50084,-0.12583],[51.49977,-0.12903],[51.49955,-0.13359],[51.49895,-0.13548],[51.49755,-0.13855]],[[51.49758,-0.13857],[51.49905,-0.13535],[51.49959,-0.13359],[51.49981,-0.12904],[51.50088,-0.12587]],[[51.49791,-0.27513],[51.49903,-0.27743],[51.50054,-0.2787]],[[51.50153,-0.27892],[51.49987,-0.27783],[51.49802,-0.27504]],[[51.49851,-0.18986],[51.49876,-0.1903]],[[51.49878,-0.19026],[51.49853,-0.18982]],[[51.49876,-0.1903],[51.49913,-0.19075]],[[51.49876,-0.1903],[51.50036,-0.19235]],[[51.49987,-0.19177],[51.49878,-0.19026]],[[51.49918,-0.19076],[51.49878,-0.19026]],[[51.49913,-0.19075],[51.50044,-0.19217]],[[51.50045,-0.19213],[51.49918,-0.19076]],[[51.50051,-0.19243],[51.49987,-0.19177]],[[51.50036,-0.19235],[51.5005,-0.19249]],[[51.50044,-0.19217],[51.5005,-0.19223]],[[51.50051,-0.1922],[51.50045,-0.19213]],[[51.5005,-0.19223],[51.50164,-0.19322],[51.50405,-0.19431]],[[51.50406,-0.19424],[51.50166,-0.19317],[51.50051,-0.1922]],[[51.50054,-0.2787],[51.50281,-0.28031],[51.50494,-0.28438]],[[51.50761,-0.12204],[51.50639,-0.12285],[51.50237,-0.12381],[51.50165,-0.12436],[51.50084,-0.12583]],[[51.50088,-0.12587],[51.50143,-0.12472],[51.50224,-0.12393],[51.50621,-0.12298],[51.50762,-0.12211]],[[51.50312,-0.28028],[51.50153,-0.27892]],[[51.50357,-0.28121],[51.50312,-0.28028]],[[51.50367,-0.2814],[51.50357,-0.28121]],[[51.50386,-0.28176],[51.50367,-0.2814]],[[51.51013,-0.28822],[51.50803,-0.28757],[51.50678,-0.28664],[51.50386,-0.28176]],[[51.50405,-0.19431],[51.50414,-0.19433]],[[51.50415,-0.19427],[51.50406,-0.19424]],[[51.50414,-0.19433],[51.50642,-0.19518]],[[51.50642,-0.19512],[51.50415,-0.19427]],[[51.50494,-0.28438],[51.50536,-0.2851]],[[51.50536,-0.2851],[51.50546,-0.28528]],[[51.50546,-0.28528],[51.50585,-0.28585]],[[51.50585,-0.28585],[51.50754,-0.28741],[51.51013,-0.28827]],[[51.50642,-0.19518],[51.50683,-0.19533]],[[51.50684,-0.19528],[51.50642,-0.19512]],[[51.50683,-0.19533],[51.50786,-0.19572]],[[51.50787,-0.19568],[51.50684,-0.19528]],[[51.51088,-0.11481],[51.50931,-0.11984],[51.50842,-0.1213],[51.50761,-0.12204]],[[51.50762,-0.12211],[51.50921,-0.12013],[51.51091,-0.11481]],[[51.50786,-0.19572],[51.50809,-0.19578]],[[51.5081,-0.19574],[51.50787,-0.19568]],[[51.50809,-0.19578],[51.50881,-0.19606]],[[51.50882,-0.19602],[51.5081,-0.19574]],[[51.50881,-0.19606],[51.51032,-0.19575]],[[51.51029,-0.19569],[51.50882,-0.19602]],[[51.50956,-0.07844],[51.50971,-0.08065],[51.51042,-0.08271],[51.51061,-0.08432]],[[51.50972,-0.07772],[51.50956,-0.07844]],[[51.50994,-0.0762],[51.50972,-0.07772]],[[51.51064,-0.08432],[51.51045,-0.08269],[51.50968,-0.08032],[51.50959,-0.07846],[51.50981,-0.07773]],[[51.50981,-0.07773],[51.50999,-0.07625]],[[51.51023,-0.07586],[51.50994,-0.0762]],[[51.50999,-0.07625],[51.51027,-0.07586]],[[51.51013,-0.28827],[51.51023,-0.28827]],[[51.51063,-0.2882],[51.51013,-0.28822]],[[51.51023,-0.28827],[51.51065,-0.28825]],[[51.51033,-0.07575],[51.51023,-0.07586]],[[51.51027,-0.07586],[51.51034,-0.07579]],[[51.51048,-0.19554],[51.51029,-0.19569]],[[51.51032,-0.19575],[51.51056,-0.19555]],[[51.51338,-0.07532],[51.51252,-0.07555],[51.5113,-0.07533],[51.51033,-0.07575]],[[51.51034,-0.07579],[51.51129,-0.07538],[51.51252,-0.0756],[51.51337,-0.07537]],[[51.51194,-0.19183],[51.51142,-0.19407],[51.51048,-0.19554]],[[51.51056,-0.19555],[51.51146,-0.1941],[51.51197,-0.19184]],[[51.51061,-0.08432],[51.51088,-0.08682]],[[51.51471,-0.28816],[51.51355,-0.28767],[51.51063,-0.2882]],[[51.5109,-0.08673],[51.51064,-0.08432]],[[51.51065,-0.28825],[51.51355,-0.28773],[51.51469,-0.28821]],[[51.51115,-0.11291],[51.51088,-0.11481]],[[51.51088,-0.08682],[51.51148,-0.0903]],[[51.51151,-0.0903],[51.5109,-0.08673]],[[51.51091,-0.11481],[51.51118,-0.11291]],[[51.51172,-0.10325],[51.51117,-0.10569],[51.51115,-0.11291]],[[51.51118,-0.11291],[51.5112,-0.10569],[51.51175,-0.10326]],[[51.51148,-0.0903],[51.51182,-0.09518]],[[51.51179,-0.10311],[51.51212,-0.10146],[51.51187,-0.09643],[51.51197,-0.09437],[51.51151,-0.0903]],[[51.51177,-0.10309],[51.51172,-0.10325]],[[51.51175,-0.10326],[51.51179,-0.10311]],[[51.51181,-0.09534],[51.51209,-0.10146],[51.51177,-0.10309]],[[51.51182,-0.09527],[51.51181,-0.09534]],[[51.51182,-0.09518],[51.51182,-0.09527]],[[51.51195,-0.1917],[51.51194,-0.19183]],[[51.51212,-0.19025],[51.51195,-0.1917]],[[51.51197,-0.19184],[51.51199,-0.19171]],[[51.51199,-0.19171],[51.51216,-0.19026]],[[51.51216,-0.18979],[51.51212,-0.19025]],[[51.51216,-0.19026],[51.51219,-0.1898]],[[51.51217,-0.18965],[51.51216,-0.18979]],[[51.51221,-0.18911],[51.51217,-0.18965]],[[51.51219,-0.1898],[51.5122,-0.18967]],[[51.5122,-0.18967],[51.51225,-0.18912]],[[51.51223,-0.18891],[51.51221,-0.18911]],[[51.5123,-0.18791],[51.51223,-0.18891]],[[51.51225,-0.18912],[51.51226,-0.18892]],[[51.51226,-0.18892],[51.51233,-0.18792]],[[51.51258,-0.18425],[51.5123,-0.18791]],[[51.51233,-0.18792],[51.51261,-0.18427]],[[51.5126,-0.18364],[51.51258,-0.18425]],[[51.51291,-0.18142],[51.5126,-0.18364]],[[51.51261,-0.18427],[51.51263,-0.18365]],[[51.51263,-0.18365],[51.51293,-0.18143]],[[51.51294,-0.1813],[51.51291,-0.18142]],[[51.51293,-0.18143],[51.51296,-0.1813]],[[51.51514,-0.17596],[51.5134,-0.17959],[51.51294,-0.1813]],[[51.51296,-0.1813],[51.51344,-0.1796],[51.51517,-0.176]],[[51.51337,-0.07537],[51.51413,-0.07498],[51.51466,-0.07376]],[[51.51464,-0.07374],[51.51411,-0.07493],[51.51338,-0.07532]],[[51.51522,-0.07196],[51.51464,-0.07374]],[[51.51466,-0.07376],[51.51524,-0.07198]],[[51.51469,-0.28821],[51.51512,-0.28868]],[[51.51513,-0.28863],[51.51471,-0.28816]],[[51.51512,-0.28868],[51.51569,-0.28973],[51.51591,-0.29117],[51.51582,-0.29249],[51.51529,-0.29458],[51.51519,-0.29695]],[[51.51522,-0.29696],[51.5153,-0.29473],[51.51595,-0.29132],[51.51569,-0.28961],[51.51513,-0.28863]],[[51.5157,-0.17491],[51.51514,-0.17596]],[[51.51517,-0.176],[51.51573,-0.17495]],[[51.51519,-0.29803],[51.5152,-0.30182]],[[51.51519,-0.29695],[51.51519,-0.29803]],[[51.51522,-0.29948],[51.51522,-0.2974]],[[51.51523,-0.30182],[51.51522,-0.29948]],[[51.51522,-0.2974],[51.51522,-0.29696]],[[51.51878,-0.06282],[51.5184,-0.06329],[51.51701,-0.06753],[51.51522,-0.07196]],[[51.51524,-0.07198],[51.51706,-0.06758],[51.51843,-0.06337],[51.51881,-0.06284]],[[51.51606,-0.17428],[51.5157,-0.17491]],[[51.51573,-0.17495],[51.51609,-0.17433]],[[51.51632,-0.17381],[51.51606,-0.17428]],[[51.51609,-0.17433],[51.51635,-0.17386]],[[51.51721,-0.17223],[51.51632,-0.17381]],[[51.51635,-0.17386],[51.51723,-0.17226]],[[51.51738,-0.17192],[51.51721,-0.17223]],[[51.51723,-0.17226],[51.5174,-0.17194]],[[51.51746,-0.17181],[51.51738,-0.17192]],[[51.5174,-0.17194],[51.51749,-0.17185]],[[51.51767,-0.17157],[51.51746,-0.17181]],[[51.51749,-0.17185],[51.51767,-0.17165]],[[51.51767,-0.17165],[51.5183,-0.17075]],[[51.51827,-0.17071],[51.51767,-0.17157]],[[51.51838,-0.17053],[51.51827,-0.17071]],[[51.5183,-0.17075],[51.51962,-0.16838]],[[51.5194,-0.16871],[51.51838,-0.17053]],[[51.51961,-0.06003],[51.51878,-0.06282]],[[51.51881,-0.06284],[51.51939,-0.06178],[51.51976,-0.06031]],[[51.51957,-0.16833],[51.5194,-0.16871]],[[51.5197,-0.16805],[51.51957,-0.16833]],[[51.51965,-0.0598],[51.51961,-0.06003]],[[51.51962,-0.16838],[51.51973,-0.16809]],[[51.51965,-0.05846],[51.51965,-0.0598]],[[51.52694,-0.02542],[51.52485,-0.03532],[51.52329,-0.03873],[51.52256,-0.04095],[51.52196,-0.04544],[51.51965,-0.05846]],[[51.51967,-0.05837],[51.52199,-0.04544],[51.52259,-0.04096],[51.52331,-0.03875],[51.5241,-0.03741],[51.52488,-0.03534],[51.52696,-0.0254]],[[51.51979,-0.06003],[51.51967,-0.05837]],[[51.51986,-0.16767],[51.5197,-0.16805]],[[51.51973,-0.16809],[51.51986,-0.16767]],[[51.51976,-0.06031],[51.51979,-0.06003]],[[51.52003,-0.16725],[51.51986,-0.16767]],[[51.52038,-0.16616],[51.52003,-0.16725]],[[51.5245,-0.0142],[51.52458,-0.01849]],[[51.52536,-0.00807],[51.5245,-0.0142]],[[51.52462,-0.01848],[51.52453,-0.01419]],[[51.52453,-0.01419],[51.5246,-0.01329]],[[51.52458,-0.01849],[51.52468,-0.02003],[51.52509,-0.02101]],[[51.5246,-0.01329],[51.5254,-0.00804]],[[51.52511,-0.02097],[51.52471,-0.02001],[51.52462,-0.01848]],[[51.52509,-0.02101],[51.52688,-0.02481]],[[51.5269,-0.02479],[51.52511,-0.02097]],[[51.52574,-0.00644],[51.52536,-0.00807]],[[51.5254,-0.00804],[51.52578,-0.00642]],[[51.52819,0.00407],[51.52574,-0.00644]],[[51.52578,-0.00642],[51.52824,0.00407]],[[51.52688,-0.02481],[51.52694,-0.02542]],[[51.52696,-0.0254],[51.5269,-0.02479]],[[51.52838,0.00491],[51.52819,0.00407]],[[51.52824,0.00407],[51.52849,0.00497]],[[51.53157,0.01875],[51.52838,0.00491]],[[51.52849,0.00497],[51.52966,0.01009]],[[51.52966,0.01009],[51.5316,0.01873]],[[51.54392,0.069],[51.54463,0.06561],[51.54441,0.06287],[51.54359,0.06089],[51.54156,0.05833],[51.54054,0.05606],[51.53933,0.05242],[51.53157,0.01875]],[[51.5316,0.01873],[51.53936,0.05241],[51.54145,0.05801],[51.54368,0.06093],[51.5444,0.06269],[51.54468,0.06538],[51.54395,0.06902]],[[51.5392,0.11215],[51.53747,0.09013],[51.53772,0.08644]],[[51.53772,0.08644],[51.53793,0.08507]],[[51.53781,0.08648],[51.53797,0.09593],[51.53923,0.11214]],[[51.53926,0.08182],[51.5383,0.08413],[51.53781,0.08648]],[[51.53793,0.08507],[51.53819,0.0837]],[[51.53819,0.0837],[51.53905,0.08155]],[[51.53905,0.08155],[51.53942,0.08083]],[[51.54035,0.12729],[51.5392,0.11215]],[[51.53923,0.11214],[51.54037,0.12728]],[[51.53962,0.0811],[51.53926,0.08182]],[[51.53942,0.08083],[51.5395,0.08066]],[[51.5395,0.08066],[51.54018,0.07933]],[[51.5397,0.08092],[51.53962,0.0811]],[[51.5416,0.07703],[51.5397,0.08092]],[[51.54018,0.07933],[51.54137,0.07706]],[[51.54037,0.12777],[51.54035,0.12729]],[[51.54037,0.12728],[51.5404,0.12777]],[[51.54162,0.14759],[51.54037,0.12777]],[[51.5404,0.12777],[51.54171,0.14763]],[[51.54137,0.07706],[51.5431,0.07284]],[[51.54341,0.07174],[51.54288,0.07396],[51.5416,0.07703]],[[51.54167,0.14825],[51.54162,0.14759]],[[51.54414,0.16576],[51.54222,0.15454],[51.54167,0.14825]],[[51.54171,0.14763],[51.54174,0.14824]],[[51.54174,0.14824],[51.54176,0.14861]],[[51.54176,0.14861],[51.54225,0.15454],[51.54417,0.16574]],[[51.5431,0.07284],[51.54327,0.07212]],[[51.54327,0.07212],[51.54336,0.07172]],[[51.54336,0.07172],[51.5434,0.07145]],[[51.5434,0.07145],[51.54376,0.06969]],[[51.54353,0.07106],[51.54341,0.07174]],[[51.5438,0.06971],[51.54353,0.07106]],[[51.54376,0.06969],[51.54392,0.069]],[[51.54395,0.06902],[51.5438,0.06971]],[[51.54418,0.16602],[51.54414,0.16576]],[[51.54417,0.16574],[51.54421,0.16601]],[[51.54775,0.18707],[51.54418,0.16602]],[[51.54421,0.16601],[51.5478,0.18711]],[[51.5478,0.18736],[51.54775,0.18707]],[[51.5478,0.18711],[51.54785,0.18739]],[[51.54908,0.19488],[51.5478,0.18736]],[[51.54785,0.18739],[51.54914,0.19485]],[[51.55367,0.21721],[51.55027,0.20176],[51.54908,0.19488]],[[51.54914,0.19485],[51.55045,0.20245],[51.5537,0.2172]],[[51.55877,0.23695],[51.55583,0.22735],[51.55367,0.21721]],[[51.5537,0.2172],[51.55586,0.22733],[51.55855,0.23558]],[[51.55855,0.23558],[51.55857,0.23569]],[[51.55857,0.23569],[51.55878,0.23685]],[[51.55884,0.23737],[51.55877,0.23695]],[[51.55878,0.23685],[51.55886,0.23727]],[[51.5591,0.2394],[51.55884,0.23737]],[[51.55886,0.23727],[51.55913,0.23939]],[[51.55901,0.2518],[51.55904,0.25073]],[[51.55904,0.25073],[51.55905,0.25022]],[[51.55907,0.25073],[51.55904,0.2518]],[[51.55905,0.25022],[51.55907,0.24954]],[[51.55907,0.24954],[51.55923,0.24266],[51.5591,0.2394]],[[51.55909,0.25021],[51.55907,0.25073]],[[51.55912,0.24763],[51.55909,0.25021]],[[51.55913,0.23939],[51.55912,0.24763]]]},{"ref":"Hammersmith \u0026 City","name":"Hammersmith \u0026 City line: Barking → Hammersmith","colour":"#f4a9be","segs":[[[51.4937,-0.22499],[51.49472,-0.22519]],[[51.49545,-0.22528],[51.4937,-0.22495]],[[51.49472,-0.22519],[51.49678,-0.22559]],[[51.49585,-0.22536],[51.49545,-0.22528]],[[51.49718,-0.22563],[51.49585,-0.22536]],[[51.49678,-0.22559],[51.49721,-0.22569]],[[51.51655,-0.21323],[51.512,-0.21977],[51.50987,-0.22407],[51.50829,-0.2256],[51.5034,-0.22677],[51.49718,-0.22563]],[[51.49721,-0.22569],[51.50331,-0.22685],[51.50837,-0.22562],[51.51008,-0.22384],[51.51199,-0.21988],[51.51659,-0.21332]],[[51.51464,-0.07374],[51.51459,-0.07523],[51.51512,-0.07661]],[[51.51522,-0.07196],[51.51464,-0.07374]],[[51.515,-0.07636],[51.51459,-0.075],[51.51466,-0.07376]],[[51.51466,-0.07376],[51.51524,-0.07198]],[[51.51514,-0.07657],[51.515,-0.07636]],[[51.51512,-0.07661],[51.51519,-0.07671]],[[51.51695,-0.08086],[51.51624,-0.07862],[51.51514,-0.07657]],[[51.51519,-0.07671],[51.51621,-0.07864],[51.51691,-0.0809]],[[51.51878,-0.06282],[51.5184,-0.06329],[51.51701,-0.06753],[51.51522,-0.07196]],[[51.51524,-0.07198],[51.51706,-0.06758],[51.51843,-0.06337],[51.51881,-0.06284]],[[51.51744,-0.2102],[51.51655,-0.21323]],[[51.51659,-0.21332],[51.51748,-0.21023]],[[51.51691,-0.0809],[51.51706,-0.08183]],[[51.51709,-0.08182],[51.51695,-0.08086]],[[51.51706,-0.08183],[51.51732,-0.0834]],[[51.51735,-0.08339],[51.51709,-0.08182]],[[51.51732,-0.0834],[51.51747,-0.0844]],[[51.5175,-0.08437],[51.51735,-0.08339]],[[51.51751,-0.20989],[51.51744,-0.2102]],[[51.51747,-0.0844],[51.51827,-0.08883]],[[51.51748,-0.21023],[51.51756,-0.2099]],[[51.51831,-0.08882],[51.5175,-0.08437]],[[51.51837,-0.2072],[51.51751,-0.20989]],[[51.51756,-0.2099],[51.51843,-0.20723]],[[51.51818,-0.1776],[51.51758,-0.17647],[51.51745,-0.17568],[51.5183,-0.17075]],[[51.51861,-0.17899],[51.51818,-0.1776]],[[51.51827,-0.17071],[51.5174,-0.17567],[51.51753,-0.1765],[51.51821,-0.17794]],[[51.51821,-0.17794],[51.51856,-0.17907]],[[51.51838,-0.17053],[51.51827,-0.17071]],[[51.51827,-0.08883],[51.52004,-0.09653]],[[51.5183,-0.17075],[51.51962,-0.16838]],[[51.52007,-0.09649],[51.51831,-0.08882]],[[51.51848,-0.20698],[51.51837,-0.2072]],[[51.5194,-0.16871],[51.51838,-0.17053]],[[51.51843,-0.20723],[51.51853,-0.20702]],[[51.5209,-0.20084],[51.52095,-0.20255],[51.52059,-0.2039],[51.51848,-0.20698]],[[51.51853,-0.20702],[51.51954,-0.20555]],[[51.51856,-0.17907],[51.51868,-0.18155]],[[51.51871,-0.18155],[51.51861,-0.17899]],[[51.51868,-0.18155],[51.51892,-0.18663]],[[51.519,-0.18662],[51.51871,-0.18155]],[[51.51961,-0.06003],[51.51878,-0.06282]],[[51.51881,-0.06284],[51.51939,-0.06178],[51.51976,-0.06031]],[[51.51892,-0.18663],[51.5196,-0.19339]],[[51.51966,-0.1937],[51.519,-0.18662]],[[51.51957,-0.16833],[51.5194,-0.16871]],[[51.51954,-0.20555],[51.52082,-0.20335],[51.52092,-0.20085]],[[51.51993,-0.16721],[51.51957,-0.16833]],[[51.5196,-0.19339],[51.51969,-0.19502]],[[51.51965,-0.0598],[51.51961,-0.06003]],[[51.51962,-0.16838],[51.52015,-0.16732]],[[51.52017,-0.09951],[51.51963,-0.10268]],[[51.51963,-0.10268],[51.52004,-0.10432]],[[51.51965,-0.10264],[51.52019,-0.09953]],[[51.52005,-0.10428],[51.51965,-0.10264]],[[51.51965,-0.05846],[51.51965,-0.0598]],[[51.52694,-0.02542],[51.52485,-0.03532],[51.52329,-0.03873],[51.52256,-0.04095],[51.52196,-0.04544],[51.51965,-0.05846]],[[51.51972,-0.19514],[51.51966,-0.1937]],[[51.51967,-0.05837],[51.52199,-0.04544],[51.52259,-0.04096],[51.52331,-0.03875],[51.5241,-0.03741],[51.52488,-0.03534],[51.52696,-0.0254]],[[51.51979,-0.06003],[51.51967,-0.05837]],[[51.51969,-0.19502],[51.52082,-0.20041]],[[51.52084,-0.20043],[51.51972,-0.19514]],[[51.51976,-0.06031],[51.51979,-0.06003]],[[51.52057,-0.16565],[51.51993,-0.16721]],[[51.52004,-0.10432],[51.52014,-0.10454]],[[51.52004,-0.09653],[51.52021,-0.09724]],[[51.52036,-0.10478],[51.52005,-0.10428]],[[51.52024,-0.09723],[51.52007,-0.09649]],[[51.52014,-0.10454],[51.52034,-0.10483]],[[51.52015,-0.16732],[51.52031,-0.16684]],[[51.52024,-0.09779],[51.52017,-0.09951]],[[51.52019,-0.09953],[51.52027,-0.0978]],[[51.52021,-0.09724],[51.52023,-0.09741]],[[51.52023,-0.09741],[51.52024,-0.09779]],[[51.52027,-0.0978],[51.52024,-0.09723]],[[51.52031,-0.16684],[51.52059,-0.16564]],[[51.52034,-0.10483],[51.52215,-0.10638]],[[51.52215,-0.10632],[51.52036,-0.10478]],[[51.52073,-0.16499],[51.52057,-0.16565]],[[51.52059,-0.16564],[51.52075,-0.16501]],[[51.52246,-0.15549],[51.52073,-0.16499]],[[51.52075,-0.16501],[51.5225,-0.15551]],[[51.52082,-0.20041],[51.5209,-0.20084]],[[51.52092,-0.20085],[51.52084,-0.20043]],[[51.52215,-0.10638],[51.5223,-0.10652]],[[51.52231,-0.10646],[51.52215,-0.10632]],[[51.5223,-0.10652],[51.52243,-0.10664]],[[51.52245,-0.1066],[51.52231,-0.10646]],[[51.52243,-0.10664],[51.52252,-0.10675]],[[51.52254,-0.10671],[51.52245,-0.1066]],[[51.52328,-0.14894],[51.52301,-0.15237],[51.52246,-0.15549]],[[51.5225,-0.15551],[51.52305,-0.15239],[51.52332,-0.14897]],[[51.52252,-0.10675],[51.52302,-0.10753]],[[51.523,-0.10745],[51.52254,-0.10671]],[[51.52315,-0.10768],[51.523,-0.10745]],[[51.52302,-0.10753],[51.52315,-0.10775]],[[51.52315,-0.10775],[51.52327,-0.10794]],[[51.52329,-0.1079],[51.52315,-0.10768]],[[51.52327,-0.10794],[51.52754,-0.11457]],[[51.52382,-0.14448],[51.5238,-0.14595],[51.52328,-0.14894]],[[51.52756,-0.11452],[51.52329,-0.1079]],[[51.52332,-0.14897],[51.52385,-0.14593],[51.52384,-0.14448]],[[51.52394,-0.14243],[51.52381,-0.14435]],[[51.52381,-0.14435],[51.52382,-0.14448]],[[51.52383,-0.14435],[51.52397,-0.14244]],[[51.52384,-0.14448],[51.52383,-0.14435]],[[51.5254,-0.13636],[51.52394,-0.14243]],[[51.52397,-0.14244],[51.52543,-0.13637]],[[51.5245,-0.0142],[51.52458,-0.01849]],[[51.52536,-0.00807],[51.5245,-0.0142]],[[51.52462,-0.01848],[51.52453,-0.01419]],[[51.52453,-0.01419],[51.5246,-0.01329]],[[51.52458,-0.01849],[51.52468,-0.02003],[51.52509,-0.02101]],[[51.5246,-0.01329],[51.5254,-0.00804]],[[51.52511,-0.02097],[51.52471,-0.02001],[51.52462,-0.01848]],[[51.52509,-0.02101],[51.52688,-0.02481]],[[51.5269,-0.02479],[51.52511,-0.02097]],[[51.52574,-0.00644],[51.52536,-0.00807]],[[51.52629,-0.13381],[51.5254,-0.13636]],[[51.5254,-0.00804],[51.52578,-0.00642]],[[51.52543,-0.13637],[51.52632,-0.13384]],[[51.52819,0.00407],[51.52574,-0.00644]],[[51.52578,-0.00642],[51.52824,0.00407]],[[51.53036,-0.12289],[51.52915,-0.12561],[51.52629,-0.13381]],[[51.52632,-0.13384],[51.5304,-0.12291]],[[51.52688,-0.02481],[51.52694,-0.02542]],[[51.52696,-0.0254],[51.5269,-0.02479]],[[51.52754,-0.11457],[51.52783,-0.11503]],[[51.52786,-0.11499],[51.52756,-0.11452]],[[51.52783,-0.11503],[51.52851,-0.11615]],[[51.52853,-0.11611],[51.52786,-0.11499]],[[51.52838,0.00491],[51.52819,0.00407]],[[51.52824,0.00407],[51.52849,0.00497]],[[51.53157,0.01875],[51.52838,0.00491]],[[51.52849,0.00497],[51.52966,0.01009]],[[51.52851,-0.11615],[51.52867,-0.11643]],[[51.52869,-0.11637],[51.52853,-0.11611]],[[51.52867,-0.11643],[51.52878,-0.11662]],[[51.5288,-0.11656],[51.52869,-0.11637]],[[51.52878,-0.11662],[51.52907,-0.11712]],[[51.52908,-0.11705],[51.5288,-0.11656]],[[51.52907,-0.11712],[51.52918,-0.11732]],[[51.52919,-0.11725],[51.52908,-0.11705]],[[51.52918,-0.11732],[51.52946,-0.11781]],[[51.52947,-0.11774],[51.52919,-0.11725]],[[51.52946,-0.11781],[51.52953,-0.11793]],[[51.52954,-0.11785],[51.52947,-0.11774]],[[51.52953,-0.11793],[51.5298,-0.1184]],[[51.52982,-0.11833],[51.52954,-0.11785]],[[51.52966,0.01009],[51.5316,0.01873]],[[51.5298,-0.1184],[51.52988,-0.11853]],[[51.5299,-0.11848],[51.52982,-0.11833]],[[51.52988,-0.11853],[51.53009,-0.11897]],[[51.53011,-0.11891],[51.5299,-0.11848]],[[51.53009,-0.11897],[51.53014,-0.11908]],[[51.53015,-0.11902],[51.53011,-0.11891]],[[51.53014,-0.11908],[51.53035,-0.11975]],[[51.53039,-0.11979],[51.53015,-0.11902]],[[51.53035,-0.11975],[51.53042,-0.12003]],[[51.53053,-0.1205],[51.53062,-0.12173],[51.53036,-0.12289]],[[51.53044,-0.11997],[51.53039,-0.11979]],[[51.5304,-0.12291],[51.53066,-0.12161],[51.53057,-0.12051]],[[51.53042,-0.12003],[51.53053,-0.1205]],[[51.53057,-0.12051],[51.53044,-0.11997]],[[51.54392,0.069],[51.54463,0.06561],[51.54441,0.06287],[51.54359,0.06089],[51.54156,0.05833],[51.54054,0.05606],[51.53933,0.05242],[51.53157,0.01875]],[[51.5316,0.01873],[51.53936,0.05241],[51.54145,0.05801],[51.54368,0.06093],[51.5444,0.06269],[51.54468,0.06538],[51.54395,0.06902]],[[51.5395,0.08066],[51.54018,0.07933]],[[51.54018,0.07933],[51.54137,0.07706]],[[51.54026,0.07977],[51.54117,0.07783]],[[51.5416,0.07703],[51.54117,0.07783]],[[51.54137,0.07706],[51.5431,0.07284]],[[51.54341,0.07174],[51.54288,0.07396],[51.5416,0.07703]],[[51.5431,0.07284],[51.54327,0.07212]],[[51.54327,0.07212],[51.54336,0.07172]],[[51.54336,0.07172],[51.5434,0.07145]],[[51.5434,0.07145],[51.54376,0.06969]],[[51.54353,0.07106],[51.54341,0.07174]],[[51.5438,0.06971],[51.54353,0.07106]],[[51.54376,0.06969],[51.54392,0.069]],[[51.54395,0.06902],[51.5438,0.06971]]]},{"ref":"Jubilee","name":"Jubilee line: Canning Town → Stratford","colour":"#949699","segs":[[[51.49729,-0.06641],[51.49729,-0.06957],[51.49794,-0.07247],[51.50267,-0.08162],[51.50402,-0.08373]],[[51.49749,-0.06484],[51.49729,-0.06641]],[[51.49773,-0.05116],[51.49797,-0.06107],[51.49749,-0.06484]],[[51.50502,-0.08633],[51.50436,-0.08397],[51.49806,-0.07214],[51.49748,-0.06899],[51.49771,-0.06494]],[[51.49771,-0.06494],[51.49794,-0.06362]],[[51.49799,-0.04721],[51.49773,-0.05116]],[[51.49792,-0.05118],[51.49821,-0.0472]],[[51.49794,-0.06362],[51.49822,-0.0594],[51.49792,-0.05118]],[[51.50423,-0.02486],[51.50426,-0.02693],[51.50397,-0.02862],[51.50238,-0.03223],[51.49847,-0.04465],[51.49799,-0.04721]],[[51.49821,-0.0472],[51.49858,-0.04503],[51.5022,-0.03347],[51.50404,-0.02906],[51.50447,-0.02661],[51.5028,-0.01169],[51.50216,-0.00919],[51.50106,-0.00685]],[[51.50106,-0.00685],[51.4997,-0.00418],[51.49913,-0.0021],[51.49912,-0.00014],[51.49958,0.00189]],[[51.49958,0.00189],[51.50164,0.00645]],[[51.4996,0.00243],[51.49903,0.00038],[51.499,-0.0022],[51.49963,-0.00451],[51.50083,-0.00688]],[[51.50147,0.00649],[51.4996,0.00243]],[[51.50083,-0.00688],[51.50199,-0.00937],[51.50252,-0.01116],[51.50423,-0.02486]],[[51.51111,0.01024],[51.50807,0.01236],[51.50675,0.01234],[51.50405,0.01031],[51.50147,0.00649]],[[51.50152,-0.12056],[51.50092,-0.12544],[51.50092,-0.1274],[51.50136,-0.12902],[51.50226,-0.13098],[51.50435,-0.13349]],[[51.50197,-0.11856],[51.50152,-0.12056]],[[51.50164,0.00645],[51.50418,0.01012],[51.50667,0.0119],[51.5081,0.01203],[51.5111,0.0102]],[[51.50276,-0.11555],[51.50197,-0.11856]],[[51.50468,-0.13274],[51.50252,-0.13123],[51.50146,-0.1294],[51.5009,-0.12774],[51.50118,-0.12311],[51.50214,-0.11817]],[[51.50214,-0.11817],[51.50311,-0.11457],[51.50427,-0.10862]],[[51.50365,-0.11129],[51.50276,-0.11555]],[[51.50413,-0.10682],[51.5041,-0.10859],[51.50365,-0.11129]],[[51.50499,-0.08964],[51.50415,-0.09396],[51.50401,-0.10228]],[[51.50401,-0.10228],[51.50413,-0.10682]],[[51.50402,-0.08373],[51.50459,-0.085],[51.50489,-0.08663]],[[51.50427,-0.10862],[51.50438,-0.10763]],[[51.50435,-0.13349],[51.50529,-0.13527],[51.50592,-0.13738],[51.50617,-0.14323],[51.50643,-0.14487]],[[51.50435,-0.10442],[51.50417,-0.10011],[51.50437,-0.09401],[51.50512,-0.09013]],[[51.5044,-0.10691],[51.50435,-0.10442]],[[51.50438,-0.10763],[51.5044,-0.10691]],[[51.50636,-0.13724],[51.50594,-0.13435],[51.50468,-0.13274]],[[51.50489,-0.08663],[51.50499,-0.08964]],[[51.50512,-0.09013],[51.50502,-0.08633]],[[51.50678,-0.14522],[51.50651,-0.14409],[51.50634,-0.1414],[51.50636,-0.13724]],[[51.50643,-0.14487],[51.50725,-0.14681]],[[51.50735,-0.14673],[51.50678,-0.14522]],[[51.50725,-0.14681],[51.5081,-0.14795]],[[51.50754,-0.14698],[51.50735,-0.14673]],[[51.50775,-0.14718],[51.50754,-0.14698]],[[51.52428,-0.15542],[51.52492,-0.15246],[51.52458,-0.14996],[51.52334,-0.14749],[51.52246,-0.14673],[51.52151,-0.1464],[51.5202,-0.14657],[51.51717,-0.14896],[51.51578,-0.14965],[51.50933,-0.14851],[51.50842,-0.148],[51.50775,-0.14718]],[[51.5081,-0.14795],[51.50923,-0.14873],[51.51579,-0.14989],[51.51711,-0.14933],[51.52008,-0.14684],[51.52188,-0.14662],[51.52278,-0.14699],[51.52402,-0.14873],[51.52478,-0.15124],[51.52478,-0.15369],[51.5243,-0.15544]],[[51.5111,0.0102],[51.51274,0.00926],[51.5141,0.00785]],[[51.51369,0.00858],[51.51111,0.01024]],[[51.5143,0.00793],[51.51369,0.00858]],[[51.5141,0.00785],[51.51503,0.00697]],[[51.51503,0.00703],[51.5143,0.00793]],[[51.51503,0.00697],[51.51546,0.00655]],[[51.51547,0.00659],[51.51503,0.00703]],[[51.51546,0.00655],[51.51791,0.00484],[51.51995,0.00419],[51.52516,0.00443],[51.52956,0.00401],[51.53113,0.00419],[51.53657,0.00075],[51.53803,-0.00085]],[[51.53887,-0.00168],[51.53663,0.00076],[51.53123,0.0042],[51.52968,0.00405],[51.5283,0.00442],[51.52541,0.00452],[51.52155,0.0041],[51.51995,0.00425],[51.51762,0.00504],[51.51547,0.00659]],[[51.53582,-0.17414],[51.53374,-0.17327],[51.52956,-0.16863],[51.52854,-0.1679],[51.52534,-0.16688],[51.52414,-0.166],[51.5234,-0.16484],[51.52282,-0.16327],[51.5227,-0.1616],[51.52308,-0.1593]],[[51.52308,-0.1593],[51.52367,-0.15734]],[[51.52367,-0.15734],[51.52428,-0.15542]],[[51.5243,-0.15544],[51.52281,-0.16045],[51.52268,-0.16162],[51.52279,-0.16328],[51.52349,-0.16517],[51.52462,-0.16664],[51.528,-0.16772],[51.52956,-0.16868],[51.53341,-0.1731]],[[51.53341,-0.1731],[51.53462,-0.17418],[51.53564,-0.17451],[51.5415,-0.17385],[51.5428,-0.17427]],[[51.54223,-0.1737],[51.53582,-0.17414]],[[51.53803,-0.00085],[51.53888,-0.00174]],[[51.53933,-0.00197],[51.53887,-0.00168]],[[51.53923,-0.00199],[51.53887,-0.00168]],[[51.53888,-0.00174],[51.53945,-0.00223]],[[51.53947,-0.00219],[51.53923,-0.00199]],[[51.54102,-0.00321],[51.53933,-0.00197]],[[51.53945,-0.00223],[51.54088,-0.0034]],[[51.54089,-0.00337],[51.53947,-0.00219]],[[51.54447,-0.17564],[51.54328,-0.17431],[51.54223,-0.1737]],[[51.5428,-0.17427],[51.54478,-0.17617],[51.54661,-0.1794]],[[51.54648,-0.1791],[51.54447,-0.17564]],[[51.54635,-0.19595],[51.54692,-0.20533]],[[51.54668,-0.19121],[51.54635,-0.19595]],[[51.54705,-0.20531],[51.54641,-0.19596]],[[51.54641,-0.19596],[51.5468,-0.19121]],[[51.547,-0.18001],[51.54648,-0.1791]],[[51.54661,-0.1794],[51.54697,-0.18005]],[[51.54671,-0.19078],[51.54668,-0.19121]],[[51.54724,-0.18079],[51.54744,-0.18288],[51.54671,-0.19078]],[[51.5468,-0.19121],[51.54682,-0.19079]],[[51.54682,-0.19079],[51.54746,-0.18302],[51.54726,-0.18077]],[[51.54692,-0.20533],[51.54719,-0.20846]],[[51.54697,-0.18005],[51.54724,-0.18079]],[[51.54726,-0.18077],[51.547,-0.18001]],[[51.54724,-0.20845],[51.54705,-0.20531]],[[51.54719,-0.20846],[51.55021,-0.22803]],[[51.55026,-0.228],[51.54724,-0.20845]],[[51.55021,-0.22803],[51.55024,-0.22826]],[[51.55024,-0.22826],[51.551,-0.23304]],[[51.55029,-0.22824],[51.55026,-0.228]],[[51.55105,-0.23302],[51.55029,-0.22824]],[[51.551,-0.23304],[51.55104,-0.23328]],[[51.55104,-0.23328],[51.55294,-0.24533],[51.55495,-0.25345],[51.55728,-0.26121],[51.56174,-0.27241],[51.56327,-0.27889]],[[51.55109,-0.23326],[51.55105,-0.23302]],[[51.5633,-0.27887],[51.56179,-0.27238],[51.55729,-0.2611],[51.55523,-0.25428],[51.55298,-0.24532],[51.55109,-0.23326]],[[51.56327,-0.27889],[51.56346,-0.27941]],[[51.56348,-0.27938],[51.5633,-0.27887]],[[51.56346,-0.27941],[51.56448,-0.28223],[51.56533,-0.28375],[51.56875,-0.28789]],[[51.56877,-0.28785],[51.56562,-0.28408],[51.56445,-0.28193],[51.56348,-0.27938]],[[51.56875,-0.28789],[51.56925,-0.28842]],[[51.56927,-0.28837],[51.56877,-0.28785]],[[51.56925,-0.28842],[51.57127,-0.28995]],[[51.57161,-0.29008],[51.56927,-0.28837]],[[51.57127,-0.28995],[51.57165,-0.29019]],[[51.57189,-0.29024],[51.57161,-0.29008]],[[51.57165,-0.29019],[51.57191,-0.29031]],[[51.58474,-0.27857],[51.58083,-0.27975],[51.57939,-0.28067],[51.57805,-0.28239],[51.57426,-0.28959],[51.57314,-0.29035],[51.57189,-0.29024]],[[51.57191,-0.29031],[51.57213,-0.2904]],[[51.57213,-0.2904],[51.5732,-0.29039],[51.57432,-0.28958],[51.5768,-0.28491]],[[51.5768,-0.28491],[51.57826,-0.28213],[51.57975,-0.28042],[51.58111,-0.27969],[51.58472,-0.27862]],[[51.58472,-0.27862],[51.58543,-0.2784]],[[51.58545,-0.27833],[51.58474,-0.27857]],[[51.58543,-0.2784],[51.58699,-0.27844],[51.5891,-0.27944]],[[51.5939,-0.28546],[51.59223,-0.28238],[51.58913,-0.2794],[51.58704,-0.27841],[51.58545,-0.27833]],[[51.5891,-0.27944],[51.58926,-0.27957]],[[51.58926,-0.27957],[51.59234,-0.28259],[51.59388,-0.28549]],[[51.59388,-0.28549],[51.59398,-0.28573]],[[51.594,-0.28571],[51.5939,-0.28546]],[[51.59398,-0.28573],[51.59563,-0.28927],[51.59751,-0.29121],[51.60733,-0.29455]],[[51.60733,-0.2945],[51.59745,-0.29111],[51.59569,-0.2893],[51.594,-0.28571]],[[51.60733,-0.29455],[51.60767,-0.29467]],[[51.60767,-0.29461],[51.60733,-0.2945]],[[51.60767,-0.29467],[51.60978,-0.29554],[51.61622,-0.30048]],[[51.61776,-0.30161],[51.60997,-0.2956],[51.60767,-0.29461]],[[51.61622,-0.30048],[51.61653,-0.30072]],[[51.61653,-0.30072],[51.6174,-0.30138]],[[51.6174,-0.30138],[51.61776,-0.30161]],[[51.6174,-0.30138],[51.61775,-0.30166]],[[51.61775,-0.30166],[51.61902,-0.30271]],[[51.61906,-0.30255],[51.61776,-0.30161]]]},{"ref":"Metropolitan","name":"Metropolitan line: Aldgate → Amersham","colour":"#91005a","segs":[[[51.51424,-0.07573],[51.51439,-0.07587]],[[51.51441,-0.07585],[51.51425,-0.0757]],[[51.51439,-0.07587],[51.51444,-0.07591]],[[51.51445,-0.07588],[51.51441,-0.07585]],[[51.51444,-0.07591],[51.51512,-0.07661]],[[51.51514,-0.07657],[51.51445,-0.07588]],[[51.51512,-0.07661],[51.51519,-0.07671]],[[51.51695,-0.08086],[51.51624,-0.07862],[51.51514,-0.07657]],[[51.51519,-0.07671],[51.51621,-0.07864],[51.51691,-0.0809]],[[51.51691,-0.0809],[51.51706,-0.08183]],[[51.51709,-0.08182],[51.51695,-0.08086]],[[51.51706,-0.08183],[51.51732,-0.0834]],[[51.51735,-0.08339],[51.51709,-0.08182]],[[51.51732,-0.0834],[51.51747,-0.0844]],[[51.5175,-0.08437],[51.51735,-0.08339]],[[51.51747,-0.0844],[51.51827,-0.08883]],[[51.51831,-0.08882],[51.5175,-0.08437]],[[51.51827,-0.08883],[51.52004,-0.09653]],[[51.52007,-0.09649],[51.51831,-0.08882]],[[51.52017,-0.09951],[51.51963,-0.10268]],[[51.51963,-0.10268],[51.52004,-0.10432]],[[51.51965,-0.10264],[51.52019,-0.09953]],[[51.52005,-0.10428],[51.51965,-0.10264]],[[51.52004,-0.10432],[51.52014,-0.10454]],[[51.52004,-0.09653],[51.52021,-0.09724]],[[51.52036,-0.10478],[51.52005,-0.10428]],[[51.52024,-0.09723],[51.52007,-0.09649]],[[51.52014,-0.10454],[51.52034,-0.10483]],[[51.52024,-0.09779],[51.52017,-0.09951]],[[51.52019,-0.09953],[51.52027,-0.0978]],[[51.52021,-0.09724],[51.52023,-0.09741]],[[51.52023,-0.09741],[51.52024,-0.09779]],[[51.52027,-0.0978],[51.52024,-0.09723]],[[51.52034,-0.10483],[51.52215,-0.10638]],[[51.52215,-0.10632],[51.52036,-0.10478]],[[51.52215,-0.10638],[51.5223,-0.10652]],[[51.52231,-0.10646],[51.52215,-0.10632]],[[51.5223,-0.10652],[51.52243,-0.10664]],[[51.52245,-0.1066],[51.52231,-0.10646]],[[51.52243,-0.10664],[51.52252,-0.10675]],[[51.52254,-0.10671],[51.52245,-0.1066]],[[51.52246,-0.15549],[51.52271,-0.15654]],[[51.52328,-0.14894],[51.52301,-0.15237],[51.52246,-0.15549]],[[51.52271,-0.15649],[51.5225,-0.15551]],[[51.5225,-0.15551],[51.52305,-0.15239],[51.52332,-0.14897]],[[51.52252,-0.10675],[51.52302,-0.10753]],[[51.523,-0.10745],[51.52254,-0.10671]],[[51.52271,-0.15654],[51.52374,-0.15786]],[[51.52377,-0.15781],[51.52271,-0.15649]],[[51.52315,-0.10768],[51.523,-0.10745]],[[51.52302,-0.10753],[51.52315,-0.10775]],[[51.52315,-0.10775],[51.52327,-0.10794]],[[51.52329,-0.1079],[51.52315,-0.10768]],[[51.52327,-0.10794],[51.52754,-0.11457]],[[51.52382,-0.14448],[51.5238,-0.14595],[51.52328,-0.14894]],[[51.52756,-0.11452],[51.52329,-0.1079]],[[51.52332,-0.14897],[51.52385,-0.14593],[51.52384,-0.14448]],[[51.52374,-0.15786],[51.52383,-0.15801]],[[51.52386,-0.15794],[51.52377,-0.15781]],[[51.52394,-0.14243],[51.52381,-0.14435]],[[51.52381,-0.14435],[51.52382,-0.14448]],[[51.52383,-0.15801],[51.52774,-0.16553]],[[51.52383,-0.14435],[51.52397,-0.14244]],[[51.52384,-0.14448],[51.52383,-0.14435]],[[51.52776,-0.16549],[51.52386,-0.15794]],[[51.5254,-0.13636],[51.52394,-0.14243]],[[51.52397,-0.14244],[51.52543,-0.13637]],[[51.52629,-0.13381],[51.5254,-0.13636]],[[51.52543,-0.13637],[51.52632,-0.13384]],[[51.53036,-0.12289],[51.52915,-0.12561],[51.52629,-0.13381]],[[51.52632,-0.13384],[51.5304,-0.12291]],[[51.52754,-0.11457],[51.52783,-0.11503]],[[51.52786,-0.11499],[51.52756,-0.11452]],[[51.52774,-0.16553],[51.52853,-0.16699]],[[51.52857,-0.16694],[51.52776,-0.16549]],[[51.52783,-0.11503],[51.52851,-0.11615]],[[51.52853,-0.11611],[51.52786,-0.11499]],[[51.52851,-0.11615],[51.52867,-0.11643]],[[51.52853,-0.16699],[51.5287,-0.16726]],[[51.52869,-0.11637],[51.52853,-0.11611]],[[51.52874,-0.16721],[51.52857,-0.16694]],[[51.52867,-0.11643],[51.52878,-0.11662]],[[51.5288,-0.11656],[51.52869,-0.11637]],[[51.5287,-0.16726],[51.52925,-0.16803]],[[51.52927,-0.16799],[51.52874,-0.16721]],[[51.52878,-0.11662],[51.52907,-0.11712]],[[51.52908,-0.11705],[51.5288,-0.11656]],[[51.52907,-0.11712],[51.52918,-0.11732]],[[51.52919,-0.11725],[51.52908,-0.11705]],[[51.52918,-0.11732],[51.52946,-0.11781]],[[51.52947,-0.11774],[51.52919,-0.11725]],[[51.52925,-0.16803],[51.53512,-0.17517],[51.53608,-0.17588]],[[51.53609,-0.17581],[51.53517,-0.17515],[51.52927,-0.16799]],[[51.52946,-0.11781],[51.52953,-0.11793]],[[51.52954,-0.11785],[51.52947,-0.11774]],[[51.52953,-0.11793],[51.5298,-0.1184]],[[51.52982,-0.11833],[51.52954,-0.11785]],[[51.5298,-0.1184],[51.52988,-0.11853]],[[51.5299,-0.11848],[51.52982,-0.11833]],[[51.52988,-0.11853],[51.53009,-0.11897]],[[51.53011,-0.11891],[51.5299,-0.11848]],[[51.53009,-0.11897],[51.53014,-0.11908]],[[51.53015,-0.11902],[51.53011,-0.11891]],[[51.53014,-0.11908],[51.53035,-0.11975]],[[51.53039,-0.11979],[51.53015,-0.11902]],[[51.53035,-0.11975],[51.53042,-0.12003]],[[51.53053,-0.1205],[51.53062,-0.12173],[51.53036,-0.12289]],[[51.53044,-0.11997],[51.53039,-0.11979]],[[51.5304,-0.12291],[51.53066,-0.12161],[51.53057,-0.12051]],[[51.53042,-0.12003],[51.53053,-0.1205]],[[51.53057,-0.12051],[51.53044,-0.11997]],[[51.53608,-0.17588],[51.53636,-0.17595]],[[51.53639,-0.17588],[51.53609,-0.17581]],[[51.53636,-0.17595],[51.5367,-0.17597]],[[51.5367,-0.17591],[51.53639,-0.17588]],[[51.5367,-0.17597],[51.537,-0.176]],[[51.537,-0.17594],[51.5367,-0.17591]],[[51.537,-0.176],[51.54116,-0.17531],[51.54348,-0.17531]],[[51.54349,-0.17526],[51.54116,-0.17526],[51.537,-0.17594]],[[51.54348,-0.17531],[51.54372,-0.17537]],[[51.54373,-0.17532],[51.54349,-0.17526]],[[51.54372,-0.17537],[51.54479,-0.17623],[51.54564,-0.17836],[51.54639,-0.17925]],[[51.54708,-0.18001],[51.54568,-0.17831],[51.54474,-0.17605],[51.54373,-0.17532]],[[51.54632,-0.19595],[51.5469,-0.20533]],[[51.54662,-0.19121],[51.54632,-0.19595]],[[51.54639,-0.17925],[51.54689,-0.18018]],[[51.54708,-0.20531],[51.54645,-0.19597]],[[51.54645,-0.19597],[51.54683,-0.19121]],[[51.54741,-0.47553],[51.54649,-0.47766]],[[51.54666,-0.19077],[51.54662,-0.19121]],[[51.54665,-0.47782],[51.54743,-0.47555]],[[51.54738,-0.18305],[51.54666,-0.19077]],[[51.54683,-0.19121],[51.54685,-0.1908]],[[51.54685,-0.1908],[51.54697,-0.18892]],[[51.54689,-0.18018],[51.54696,-0.18033]],[[51.5469,-0.20533],[51.54694,-0.20596]],[[51.54694,-0.20596],[51.54729,-0.20946],[51.55018,-0.22804]],[[51.54696,-0.18033],[51.54735,-0.18165],[51.54738,-0.18305]],[[51.54697,-0.18892],[51.54756,-0.18249],[51.54744,-0.18112],[51.54708,-0.18001]],[[51.54727,-0.20845],[51.54708,-0.20531]],[[51.55029,-0.22799],[51.54727,-0.20845]],[[51.54796,-0.47307],[51.54741,-0.47553]],[[51.54743,-0.47555],[51.548,-0.47309]],[[51.54881,-0.46575],[51.54808,-0.46925],[51.54796,-0.47307]],[[51.548,-0.47309],[51.54815,-0.46897],[51.54887,-0.46571]],[[51.5489,-0.46543],[51.54881,-0.46575]],[[51.54887,-0.46571],[51.54895,-0.46543]],[[51.55025,-0.46113],[51.5489,-0.46543]],[[51.54895,-0.46543],[51.55031,-0.46107]],[[51.55018,-0.22804],[51.55021,-0.22827]],[[51.55021,-0.22827],[51.55097,-0.23305]],[[51.55032,-0.46088],[51.55025,-0.46113]],[[51.55033,-0.22823],[51.55029,-0.22799]],[[51.55031,-0.46107],[51.55039,-0.46079]],[[51.55068,-0.45966],[51.55032,-0.46088]],[[51.55108,-0.23301],[51.55033,-0.22823]],[[51.55039,-0.46079],[51.55071,-0.45969]],[[51.55072,-0.45956],[51.55068,-0.45966]],[[51.55071,-0.45969],[51.55074,-0.45958]],[[51.55364,-0.4503],[51.55072,-0.45956]],[[51.55074,-0.45958],[51.55366,-0.45032]],[[51.55097,-0.23305],[51.55101,-0.2333]],[[51.55101,-0.2333],[51.55291,-0.24535],[51.55491,-0.25347],[51.55692,-0.2603],[51.56146,-0.27184],[51.56255,-0.27645]],[[51.55112,-0.23324],[51.55108,-0.23301]],[[51.55398,-0.24912],[51.55281,-0.24416],[51.55112,-0.23324]],[[51.55389,-0.44951],[51.55364,-0.4503]],[[51.55366,-0.45032],[51.55391,-0.44953]],[[51.55398,-0.44925],[51.55389,-0.44951]],[[51.55391,-0.44953],[51.55399,-0.44932]],[[51.55426,-0.44849],[51.55398,-0.44925]],[[51.55522,-0.2541],[51.55398,-0.24912]],[[51.55399,-0.44932],[51.55428,-0.44857]],[[51.56197,-0.44201],[51.55705,-0.4445],[51.55546,-0.44625],[51.55426,-0.44849]],[[51.55428,-0.44857],[51.55547,-0.44635],[51.55694,-0.44468],[51.562,-0.44204]],[[51.55534,-0.25455],[51.55522,-0.2541]],[[51.56273,-0.27629],[51.56158,-0.27168],[51.55751,-0.26161],[51.55534,-0.25455]],[[51.56199,-0.442],[51.56197,-0.44201]],[[51.56208,-0.44191],[51.56199,-0.442]],[[51.562,-0.44204],[51.56209,-0.44194]],[[51.5637,-0.43994],[51.56208,-0.44191]],[[51.56209,-0.44194],[51.56374,-0.43997]],[[51.56255,-0.27645],[51.56278,-0.27758]],[[51.56343,-0.27878],[51.56273,-0.27629]],[[51.5634,-0.27879],[51.56273,-0.27629]],[[51.56278,-0.27758],[51.56315,-0.27898]],[[51.56278,-0.27758],[51.56318,-0.27896]],[[51.56315,-0.27898],[51.56332,-0.27953]],[[51.56318,-0.27896],[51.56335,-0.2795]],[[51.56332,-0.27953],[51.56522,-0.28373],[51.56821,-0.28739],[51.56966,-0.28965],[51.57176,-0.29462]],[[51.56335,-0.2795],[51.56508,-0.28343],[51.56956,-0.28941],[51.57184,-0.29461]],[[51.56349,-0.27905],[51.5634,-0.27879]],[[51.56351,-0.27903],[51.56343,-0.27878]],[[51.57194,-0.2946],[51.56886,-0.28789],[51.56506,-0.28304],[51.56349,-0.27905]],[[51.56453,-0.28189],[51.56351,-0.27903]],[[51.56375,-0.43987],[51.5637,-0.43994]],[[51.56374,-0.43997],[51.56376,-0.43994]],[[51.57309,-0.41309],[51.57095,-0.423],[51.56375,-0.43987]],[[51.56376,-0.43994],[51.57097,-0.42305],[51.57312,-0.41312]],[[51.57202,-0.29459],[51.569,-0.28805],[51.56578,-0.28414],[51.56453,-0.28189]],[[51.57176,-0.29462],[51.57189,-0.29502]],[[51.57184,-0.29461],[51.57197,-0.29501]],[[51.57189,-0.29502],[51.57638,-0.30832],[51.57749,-0.31242]],[[51.57208,-0.295],[51.57194,-0.2946]],[[51.57197,-0.29501],[51.57641,-0.3083],[51.57755,-0.31245]],[[51.57215,-0.295],[51.57202,-0.29459]],[[51.5776,-0.31249],[51.57661,-0.30878],[51.57208,-0.295]],[[51.57765,-0.31252],[51.57648,-0.30824],[51.57215,-0.295]],[[51.57316,-0.4128],[51.57309,-0.41309]],[[51.57312,-0.41312],[51.57319,-0.41281]],[[51.5732,-0.41263],[51.57316,-0.4128]],[[51.57319,-0.41281],[51.57323,-0.41265]],[[51.57648,-0.39762],[51.5732,-0.41263]],[[51.57323,-0.41265],[51.57651,-0.39764]],[[51.5769,-0.35951],[51.57585,-0.36193],[51.57516,-0.36441],[51.57487,-0.36677],[51.57486,-0.36918]],[[51.57486,-0.36918],[51.57498,-0.37029]],[[51.57486,-0.36837],[51.57529,-0.36397],[51.57692,-0.35957]],[[51.57501,-0.37026],[51.57486,-0.36837]],[[51.57498,-0.37029],[51.57502,-0.37049]],[[51.57504,-0.37048],[51.57501,-0.37026]],[[51.57502,-0.37049],[51.57513,-0.37104]],[[51.57515,-0.37103],[51.57504,-0.37048]],[[51.57513,-0.37104],[51.57517,-0.37132]],[[51.57557,-0.37339],[51.57515,-0.37103]],[[51.57517,-0.37132],[51.57552,-0.37354]],[[51.57552,-0.37354],[51.57653,-0.37988]],[[51.57657,-0.37988],[51.57557,-0.37339]],[[51.57658,-0.39705],[51.57648,-0.39762]],[[51.57651,-0.39764],[51.5766,-0.39706]],[[51.57653,-0.37988],[51.57654,-0.37996]],[[51.57654,-0.37996],[51.57706,-0.38442],[51.57721,-0.38838],[51.57709,-0.39245],[51.57658,-0.39705]],[[51.57658,-0.37996],[51.57657,-0.37988]],[[51.5766,-0.39706],[51.57711,-0.39246],[51.57725,-0.38899],[51.57711,-0.38465],[51.57658,-0.37996]],[[51.57698,-0.35933],[51.5769,-0.35951]],[[51.57692,-0.35957],[51.577,-0.35939]],[[51.57969,-0.35275],[51.57698,-0.35933]],[[51.577,-0.35939],[51.57972,-0.35279]],[[51.57749,-0.31242],[51.57762,-0.31301]],[[51.57755,-0.31245],[51.57767,-0.31305]],[[51.57774,-0.31309],[51.5776,-0.31249]],[[51.57762,-0.31301],[51.57856,-0.32024],[51.57852,-0.32958]],[[51.57778,-0.31313],[51.57765,-0.31252]],[[51.57767,-0.31305],[51.57857,-0.31932],[51.57855,-0.32958]],[[51.57868,-0.32631],[51.57857,-0.31819],[51.57774,-0.31309]],[[51.57872,-0.32557],[51.57864,-0.31842],[51.57778,-0.31313]],[[51.57849,-0.33077],[51.57853,-0.33375]],[[51.57852,-0.32958],[51.57849,-0.33077]],[[51.57853,-0.33375],[51.57859,-0.33417]],[[51.57855,-0.32958],[51.57861,-0.33375]],[[51.57859,-0.33417],[51.57938,-0.33718]],[[51.57861,-0.33375],[51.57868,-0.33417]],[[51.5787,-0.33375],[51.57862,-0.33051]],[[51.57862,-0.33051],[51.5787,-0.32685]],[[51.57864,-0.33375],[51.57867,-0.32685]],[[51.57872,-0.33418],[51.57864,-0.33375]],[[51.57867,-0.32685],[51.57868,-0.32631]],[[51.57868,-0.33417],[51.57964,-0.33804]],[[51.57879,-0.33418],[51.5787,-0.33375]],[[51.5787,-0.32685],[51.57871,-0.32631]],[[51.57871,-0.32631],[51.57872,-0.32557]],[[51.57896,-0.33512],[51.57872,-0.33418]],[[51.57903,-0.33507],[51.57879,-0.33418]],[[51.57974,-0.33802],[51.57896,-0.33512]],[[51.57987,-0.34071],[51.57982,-0.33807],[51.57903,-0.33507]],[[51.57938,-0.33718],[51.57971,-0.33907]],[[51.57964,-0.33804],[51.57977,-0.33947]],[[51.57974,-0.35256],[51.57969,-0.35275]],[[51.57971,-0.33907],[51.57978,-0.3413]],[[51.57972,-0.35279],[51.57977,-0.35259]],[[51.58028,-0.34806],[51.58017,-0.35043],[51.57974,-0.35256]],[[51.57985,-0.33992],[51.57974,-0.33802]],[[51.57977,-0.35259],[51.58024,-0.35015],[51.58032,-0.34826]],[[51.57977,-0.33947],[51.5798,-0.34088]],[[51.57978,-0.3413],[51.5802,-0.34719]],[[51.5798,-0.34088],[51.57982,-0.3413]],[[51.57982,-0.3413],[51.58002,-0.34521]],[[51.57985,-0.34129],[51.57985,-0.33992]],[[51.58027,-0.34735],[51.57985,-0.34129]],[[51.57989,-0.34129],[51.57987,-0.34071]],[[51.58042,-0.34805],[51.57989,-0.34129]],[[51.58002,-0.34521],[51.5802,-0.34694]],[[51.5802,-0.34719],[51.58034,-0.34786]],[[51.5802,-0.34694],[51.58028,-0.34806]],[[51.58032,-0.34826],[51.58027,-0.34735]],[[51.58034,-0.34786],[51.58076,-0.34986]],[[51.58078,-0.34984],[51.58042,-0.34805]],[[51.58076,-0.34986],[51.58122,-0.35186]],[[51.58194,-0.35391],[51.58078,-0.34984]],[[51.58122,-0.35186],[51.58192,-0.35394]],[[51.58192,-0.35394],[51.58198,-0.35413]],[[51.58201,-0.35411],[51.58194,-0.35391]],[[51.58198,-0.35413],[51.58469,-0.36195]],[[51.58472,-0.36192],[51.58201,-0.35411]],[[51.58469,-0.36195],[51.5848,-0.36226]],[[51.58483,-0.36223],[51.58472,-0.36192]],[[51.5848,-0.36226],[51.5932,-0.38198]],[[51.59324,-0.38197],[51.58483,-0.36223]],[[51.5932,-0.38198],[51.59332,-0.38225]],[[51.59336,-0.38224],[51.59324,-0.38197]],[[51.59332,-0.38225],[51.59384,-0.38346]],[[51.59386,-0.38339],[51.59336,-0.38224]],[[51.59384,-0.38346],[51.59395,-0.3837]],[[51.59397,-0.38365],[51.59386,-0.38339]],[[51.59395,-0.3837],[51.59544,-0.38836],[51.59732,-0.40023],[51.59815,-0.40344],[51.59937,-0.40673],[51.60414,-0.4171]],[[51.60416,-0.41706],[51.59927,-0.40641],[51.59821,-0.40353],[51.59731,-0.39996],[51.59558,-0.38885],[51.59491,-0.38618],[51.59397,-0.38365]],[[51.60414,-0.4171],[51.60423,-0.41727]],[[51.60426,-0.41723],[51.60416,-0.41706]],[[51.60423,-0.41727],[51.60487,-0.41828]],[[51.60484,-0.41815],[51.60426,-0.41723]],[[51.60519,-0.41869],[51.60484,-0.41815]],[[51.60487,-0.41828],[51.60521,-0.4188]],[[51.62339,-0.42787],[51.6205,-0.42602],[51.61857,-0.42521],[51.61375,-0.4247],[51.61011,-0.42333],[51.60729,-0.4213],[51.60519,-0.41869]],[[51.60521,-0.4188],[51.60727,-0.42135],[51.61009,-0.42336],[51.61343,-0.42468],[51.61887,-0.42536],[51.62338,-0.42792]],[[51.62338,-0.42792],[51.6235,-0.428]],[[51.62351,-0.42795],[51.62339,-0.42787]],[[51.6235,-0.428],[51.63217,-0.43389]],[[51.63218,-0.43381],[51.62351,-0.42795]],[[51.63217,-0.43389],[51.63229,-0.43399]],[[51.6323,-0.43392],[51.63218,-0.43381]],[[51.63229,-0.43399],[51.63469,-0.43676],[51.63667,-0.44018]],[[51.63668,-0.44012],[51.63456,-0.43651],[51.6323,-0.43392]],[[51.63667,-0.44018],[51.63677,-0.4404]],[[51.63677,-0.44032],[51.63668,-0.44012]],[[51.63677,-0.4404],[51.6383,-0.44473]],[[51.63832,-0.44462],[51.63677,-0.44032]],[[51.6383,-0.44473],[51.63836,-0.44492]],[[51.63838,-0.44485],[51.63832,-0.44462]],[[51.63836,-0.44492],[51.63839,-0.44506]],[[51.63876,-0.4463],[51.63838,-0.44485]],[[51.63839,-0.44506],[51.63866,-0.44637]],[[51.63839,-0.44506],[51.63873,-0.44632]],[[51.63866,-0.44637],[51.63872,-0.44666]],[[51.63872,-0.44666],[51.63875,-0.44679]],[[51.63873,-0.44632],[51.63883,-0.44672]],[[51.63875,-0.44679],[51.63912,-0.44826]],[[51.63879,-0.44641],[51.63876,-0.4463]],[[51.63885,-0.4467],[51.63879,-0.44641]],[[51.63886,-0.44669],[51.63879,-0.44641]],[[51.63883,-0.44672],[51.63892,-0.44704]],[[51.63911,-0.44797],[51.63885,-0.4467]],[[51.63923,-0.44807],[51.63886,-0.44669]],[[51.63892,-0.44704],[51.6392,-0.44812]],[[51.63916,-0.44818],[51.63911,-0.44797]],[[51.63912,-0.44826],[51.63921,-0.44861]],[[51.63925,-0.44854],[51.63916,-0.44818]],[[51.6392,-0.44812],[51.63928,-0.44841]],[[51.63921,-0.44861],[51.6401,-0.45261],[51.64123,-0.46042]],[[51.63931,-0.44836],[51.63923,-0.44807]],[[51.64086,-0.45757],[51.64009,-0.45232],[51.63925,-0.44854]],[[51.63928,-0.44841],[51.6399,-0.44999],[51.64082,-0.45091],[51.64181,-0.45122],[51.64302,-0.45078]],[[51.64301,-0.45073],[51.6418,-0.45117],[51.64084,-0.45087],[51.63988,-0.44988],[51.63931,-0.44836]],[[51.64016,-0.47222],[51.64035,-0.47449]],[[51.64018,-0.47193],[51.64016,-0.47222]],[[51.64118,-0.46634],[51.64018,-0.47193]],[[51.64038,-0.47447],[51.64019,-0.47223]],[[51.64019,-0.47223],[51.64021,-0.47194]],[[51.64021,-0.47194],[51.64094,-0.46783]],[[51.64035,-0.47449],[51.64044,-0.47492]],[[51.64047,-0.47487],[51.64038,-0.47447]],[[51.64044,-0.47492],[51.64213,-0.47831]],[[51.64241,-0.47868],[51.64095,-0.4762],[51.64047,-0.47487]],[[51.64127,-0.46041],[51.64086,-0.45757]],[[51.64094,-0.46783],[51.64126,-0.4661]],[[51.64123,-0.46608],[51.64118,-0.46634]],[[51.64126,-0.4659],[51.64123,-0.46608]],[[51.64123,-0.46042],[51.6413,-0.4609]],[[51.64126,-0.4661],[51.64129,-0.46591]],[[51.6413,-0.4609],[51.64146,-0.46355],[51.64126,-0.4659]],[[51.64133,-0.46088],[51.64127,-0.46041]],[[51.64129,-0.46591],[51.6415,-0.4631],[51.64133,-0.46088]],[[51.64213,-0.47831],[51.64282,-0.47941]],[[51.64284,-0.47938],[51.64241,-0.47868]],[[51.64282,-0.47941],[51.64293,-0.47959]],[[51.64296,-0.47955],[51.64284,-0.47938]],[[51.64293,-0.47959],[51.64576,-0.48419],[51.6471,-0.48748],[51.6482,-0.49192],[51.64894,-0.49723]],[[51.64897,-0.49722],[51.64819,-0.49168],[51.64712,-0.48743],[51.64568,-0.48394],[51.64296,-0.47955]],[[51.6469,-0.44188],[51.6458,-0.44408],[51.64414,-0.44923],[51.64301,-0.45073]],[[51.64302,-0.45078],[51.64417,-0.44923],[51.64592,-0.44386],[51.64691,-0.44194]],[[51.64713,-0.44158],[51.6469,-0.44188]],[[51.64691,-0.44194],[51.64715,-0.44161]],[[51.65195,-0.43196],[51.65015,-0.43721],[51.6491,-0.43904],[51.64713,-0.44158]],[[51.64715,-0.44161],[51.65013,-0.43734],[51.65198,-0.432]],[[51.64894,-0.49723],[51.64899,-0.49758]],[[51.64902,-0.49759],[51.64897,-0.49722]],[[51.64899,-0.49758],[51.64988,-0.50318]],[[51.64991,-0.50317],[51.64902,-0.49759]],[[51.64988,-0.50318],[51.64991,-0.50339]],[[51.64991,-0.50339],[51.65142,-0.51162]],[[51.64994,-0.50337],[51.64991,-0.50317]],[[51.65145,-0.5116],[51.64994,-0.50337]],[[51.65142,-0.51162],[51.65145,-0.51172]],[[51.65145,-0.51172],[51.65322,-0.51653],[51.65551,-0.52051]],[[51.65147,-0.5117],[51.65145,-0.5116]],[[51.65553,-0.52048],[51.65324,-0.5165],[51.65147,-0.5117]],[[51.65209,-0.43156],[51.65195,-0.43196]],[[51.65198,-0.432],[51.65211,-0.43158]],[[51.65331,-0.42774],[51.65209,-0.43156]],[[51.65211,-0.43158],[51.65335,-0.42773]],[[51.65345,-0.4274],[51.65331,-0.42774]],[[51.65335,-0.42773],[51.65349,-0.42739]],[[51.65409,-0.42539],[51.65345,-0.4274]],[[51.65349,-0.42739],[51.65412,-0.42542]],[[51.65444,-0.42432],[51.65409,-0.42539]],[[51.65412,-0.42542],[51.65448,-0.42431]],[[51.65464,-0.42373],[51.65444,-0.42432]],[[51.65448,-0.42431],[51.65609,-0.42057]],[[51.65596,-0.42056],[51.65464,-0.42373]],[[51.65551,-0.52051],[51.65554,-0.52056]],[[51.65557,-0.52054],[51.65553,-0.52048]],[[51.65554,-0.52056],[51.66411,-0.53382],[51.66505,-0.53573],[51.6661,-0.53871],[51.66684,-0.54202],[51.66709,-0.5445],[51.66704,-0.54856]],[[51.66707,-0.54857],[51.66713,-0.5445],[51.66688,-0.54205],[51.66632,-0.53937],[51.66543,-0.53657],[51.66413,-0.53379],[51.65557,-0.52054]],[[51.65596,-0.42056],[51.65621,-0.41999]],[[51.65609,-0.42057],[51.65629,-0.42012]],[[51.65621,-0.41999],[51.65646,-0.41943]],[[51.65629,-0.42012],[51.65654,-0.41954]],[[51.65646,-0.41943],[51.65728,-0.41754]],[[51.65654,-0.41954],[51.65738,-0.41761]],[[51.66701,-0.54892],[51.6669,-0.55382],[51.66774,-0.55931]],[[51.66704,-0.54856],[51.66701,-0.54892]],[[51.66776,-0.55926],[51.66693,-0.55381],[51.66705,-0.54894]],[[51.66705,-0.54894],[51.66707,-0.54857]],[[51.66774,-0.55931],[51.66781,-0.55972]],[[51.66784,-0.55967],[51.66776,-0.55926]],[[51.66781,-0.55972],[51.66838,-0.56277]],[[51.66849,-0.56319],[51.66784,-0.55967]],[[51.66849,-0.56319],[51.66838,-0.56277]],[[51.66838,-0.56277],[51.67232,-0.58399],[51.6729,-0.59166]],[[51.66857,-0.56358],[51.66849,-0.56319]],[[51.66895,-0.56547],[51.66857,-0.56358]],[[51.67293,-0.59165],[51.67236,-0.58399],[51.66857,-0.56358]],[[51.68851,-0.59291],[51.68697,-0.59115],[51.68522,-0.59035],[51.68429,-0.58939],[51.68361,-0.58797],[51.68269,-0.58441],[51.68151,-0.58287],[51.68037,-0.58242],[51.67932,-0.58262],[51.67681,-0.58494],[51.67576,-0.58526],[51.67444,-0.58485],[51.67295,-0.5833],[51.67188,-0.58074],[51.66895,-0.56547]],[[51.6729,-0.59166],[51.67291,-0.59199]],[[51.67291,-0.59199],[51.67343,-0.60302]],[[51.67295,-0.59198],[51.67293,-0.59165]],[[51.67378,-0.60524],[51.67335,-0.60157],[51.67295,-0.59198]],[[51.67343,-0.60302],[51.67361,-0.60431]],[[51.67361,-0.60431],[51.67387,-0.606]],[[51.67378,-0.60524],[51.67387,-0.606]],[[51.67407,-0.60737],[51.67387,-0.606]],[[51.68869,-0.59314],[51.68851,-0.59291]],[[51.6916,-0.6019],[51.69034,-0.5957],[51.68869,-0.59314]],[[51.69164,-0.60202],[51.6916,-0.6019]],[[51.69535,-0.6079],[51.69164,-0.60202]],[[51.69543,-0.608],[51.69535,-0.6079]],[[51.69706,-0.60902],[51.69621,-0.60874],[51.69543,-0.608]],[[51.69721,-0.60902],[51.69706,-0.60902]],[[51.69916,-0.60889],[51.69721,-0.60902]],[[51.69935,-0.60887],[51.69916,-0.60889]],[[51.70064,-0.60874],[51.69935,-0.60887]],[[51.7009,-0.60878],[51.70064,-0.60874]],[[51.70342,-0.61107],[51.70269,-0.61058],[51.70159,-0.60915],[51.7009,-0.60878]],[[51.70408,-0.61122],[51.70342,-0.61107]],[[51.7054,-0.6109],[51.70408,-0.61122]]]},{"ref":"Northern","name":"Northern line: Battersea Power Station → Charing Cross → Edgware","colour":"#000000","segs":[[[51.40333,-0.19489],[51.40239,-0.19494]],[[51.40319,-0.19469],[51.40239,-0.19469]],[[51.40413,-0.19471],[51.40319,-0.19469]],[[51.40333,-0.19489],[51.40416,-0.19479]],[[51.40416,-0.19471],[51.40413,-0.19471]],[[51.40416,-0.19479],[51.4081,-0.19477],[51.41208,-0.19584],[51.41325,-0.19559],[51.41449,-0.19412],[51.41545,-0.19195],[51.41628,-0.18204],[51.41676,-0.18003],[51.41734,-0.17888],[51.42227,-0.17421],[51.42506,-0.17079],[51.4268,-0.16935],[51.43111,-0.16487],[51.4338,-0.16283],[51.43473,-0.16159],[51.43641,-0.1584],[51.43789,-0.15674],[51.4405,-0.15526],[51.44309,-0.15321],[51.44519,-0.15136],[51.44632,-0.14967],[51.44761,-0.14882],[51.44878,-0.14812],[51.45278,-0.14764],[51.45954,-0.14156],[51.46199,-0.13766],[51.46364,-0.13281],[51.46499,-0.1301],[51.46801,-0.12775],[51.47221,-0.12252],[51.48215,-0.11223]],[[51.48211,-0.11207],[51.4722,-0.12248],[51.46799,-0.12771],[51.46497,-0.13006],[51.46361,-0.13279],[51.46196,-0.13763],[51.45952,-0.14149],[51.45301,-0.14739],[51.45213,-0.14782],[51.44877,-0.14805],[51.44759,-0.14873],[51.4463,-0.1496],[51.44437,-0.152],[51.44049,-0.15519],[51.43787,-0.15667],[51.43638,-0.15833],[51.43379,-0.16274],[51.43109,-0.16477],[51.42678,-0.16927],[51.42503,-0.1707],[51.42225,-0.17415],[51.41767,-0.17837],[51.41673,-0.17999],[51.41624,-0.18203],[51.4154,-0.1919],[51.41447,-0.19406],[51.41324,-0.19552],[51.41208,-0.19576],[51.4089,-0.19477],[51.40416,-0.19471]],[[51.48025,-0.14153],[51.47909,-0.14388]],[[51.47996,-0.14239],[51.48033,-0.14161]],[[51.48753,-0.10644],[51.48693,-0.10679],[51.48506,-0.10698],[51.48393,-0.10765],[51.48253,-0.1096],[51.48191,-0.11158],[51.47957,-0.1251],[51.47961,-0.12711],[51.48115,-0.13577],[51.48106,-0.13904],[51.48025,-0.14153]],[[51.48033,-0.14161],[51.48121,-0.1392],[51.48144,-0.13674],[51.48132,-0.13506],[51.47985,-0.12751],[51.47972,-0.12518],[51.48144,-0.1162],[51.48255,-0.11381],[51.4851,-0.11212],[51.48584,-0.11128],[51.48767,-0.10684]],[[51.48694,-0.10725],[51.48211,-0.11207]],[[51.48215,-0.11223],[51.487,-0.10737]],[[51.48707,-0.10713],[51.48694,-0.10725]],[[51.487,-0.10737],[51.49128,-0.10316],[51.49298,-0.10104],[51.49559,-0.10052],[51.4971,-0.0994]],[[51.487,-0.10737],[51.48767,-0.10684]],[[51.48753,-0.10644],[51.48707,-0.10713]],[[51.49269,-0.10118],[51.49125,-0.10307],[51.48707,-0.10713]],[[51.48759,-0.10638],[51.48753,-0.10644]],[[51.50801,-0.12334],[51.5065,-0.11853],[51.50543,-0.11613],[51.50395,-0.11458],[51.4944,-0.1079],[51.49163,-0.10375],[51.49082,-0.10353],[51.49014,-0.10384],[51.48759,-0.10638]],[[51.48767,-0.10684],[51.48875,-0.10577]],[[51.48875,-0.10577],[51.48987,-0.10517],[51.49073,-0.10545]],[[51.49073,-0.10545],[51.49652,-0.10957]],[[51.49705,-0.09937],[51.49569,-0.1004],[51.49331,-0.10075],[51.49269,-0.10118]],[[51.49652,-0.10957],[51.50492,-0.11572],[51.50598,-0.11741],[51.50704,-0.12116]],[[51.50869,-0.08701],[51.507,-0.08729],[51.50615,-0.08891],[51.50488,-0.09027],[51.50176,-0.09263],[51.49853,-0.09771],[51.49705,-0.09937]],[[51.4971,-0.0994],[51.49893,-0.09731],[51.50109,-0.09341],[51.50383,-0.09107],[51.50664,-0.08717],[51.50788,-0.08665],[51.50942,-0.0871],[51.51091,-0.08682]],[[51.50704,-0.12116],[51.50789,-0.12357]],[[51.50789,-0.12357],[51.50947,-0.12761],[51.50994,-0.12829],[51.51212,-0.12856],[51.51383,-0.12948]],[[51.53536,-0.13918],[51.53029,-0.13405],[51.52949,-0.13368],[51.52876,-0.13373],[51.5281,-0.13425],[51.52637,-0.13823],[51.52568,-0.1383],[51.52433,-0.13762],[51.51707,-0.13077],[51.51225,-0.12845],[51.50998,-0.12809],[51.50956,-0.12753],[51.50801,-0.12334]],[[51.50942,-0.08732],[51.50869,-0.08701]],[[51.51405,-0.08973],[51.51294,-0.0893],[51.51022,-0.08737],[51.50942,-0.08732]],[[51.51091,-0.08682],[51.51305,-0.08852]],[[51.51305,-0.08852],[51.51445,-0.08951]],[[51.52367,-0.13734],[51.51694,-0.13078],[51.51383,-0.12948]],[[51.51537,-0.08937],[51.51405,-0.08973]],[[51.51445,-0.08951],[51.5148,-0.08973],[51.52008,-0.08751],[51.52187,-0.0871],[51.52564,-0.08767],[51.52669,-0.08806],[51.52733,-0.08876],[51.53082,-0.10188],[51.53183,-0.1075],[51.53021,-0.12841]],[[51.53104,-0.11859],[51.53185,-0.10927],[51.53192,-0.10616],[51.52737,-0.08872],[51.5267,-0.08796],[51.52564,-0.08754],[51.52169,-0.087],[51.51951,-0.08733],[51.51537,-0.08937]],[[51.52579,-0.13851],[51.52367,-0.13734]],[[51.5277,-0.13524],[51.52651,-0.13818],[51.52579,-0.13851]],[[51.52952,-0.1338],[51.52852,-0.1342],[51.5277,-0.13524]],[[51.53021,-0.12841],[51.52882,-0.1308],[51.52795,-0.13341],[51.52772,-0.13504],[51.5281,-0.13655]],[[51.5281,-0.13655],[51.52878,-0.13759],[51.53065,-0.1387],[51.53249,-0.13924],[51.53478,-0.13905],[51.53539,-0.13932]],[[51.52817,-0.13649],[51.52821,-0.13431],[51.5293,-0.13099]],[[51.52881,-0.13744],[51.52817,-0.13649]],[[51.53537,-0.1392],[51.53161,-0.13888],[51.52881,-0.13744]],[[51.5293,-0.13099],[51.53039,-0.1282]],[[51.53309,-0.13718],[51.53046,-0.13434],[51.52952,-0.1338]],[[51.53039,-0.1282],[51.53057,-0.12694]],[[51.53057,-0.12694],[51.53104,-0.11859]],[[51.53537,-0.13933],[51.53309,-0.13718]],[[51.53537,-0.1392],[51.53536,-0.13918]],[[51.53804,-0.1419],[51.53536,-0.13918]],[[51.53537,-0.13933],[51.53539,-0.13932]],[[51.53802,-0.14203],[51.53537,-0.13933]],[[51.53794,-0.14194],[51.53537,-0.1392]],[[51.53539,-0.13932],[51.53862,-0.14254]],[[51.5386,-0.1424],[51.53794,-0.14194]],[[51.53802,-0.14203],[51.53841,-0.14254]],[[51.53894,-0.14256],[51.53802,-0.14203]],[[51.53873,-0.14247],[51.53804,-0.1419]],[[51.53894,-0.14237],[51.53804,-0.1419]],[[51.53841,-0.14254],[51.5388,-0.14278]],[[51.53893,-0.14253],[51.5386,-0.1424]],[[51.53914,-0.14238],[51.5386,-0.1424]],[[51.53862,-0.14254],[51.53894,-0.14256]],[[51.53862,-0.14254],[51.5392,-0.14288]],[[51.53893,-0.14253],[51.53873,-0.14247]],[[51.5388,-0.14278],[51.5392,-0.14288]],[[51.54,-0.14343],[51.53893,-0.14253]],[[51.53969,-0.1424],[51.53894,-0.14256]],[[51.53914,-0.14238],[51.53894,-0.14237]],[[51.5446,-0.14142],[51.53914,-0.14238]],[[51.5392,-0.14288],[51.54072,-0.14429],[51.54207,-0.14638],[51.54401,-0.15324],[51.546,-0.1564],[51.54755,-0.16007],[51.54956,-0.16345]],[[51.54445,-0.14148],[51.53969,-0.1424]],[[51.54053,-0.1439],[51.54,-0.14343]],[[51.54963,-0.16338],[51.54762,-0.16003],[51.54624,-0.15673],[51.54425,-0.1534],[51.54354,-0.15152],[51.54259,-0.14734],[51.54053,-0.1439]],[[51.54445,-0.14148],[51.54644,-0.14194],[51.55033,-0.1406],[51.55086,-0.1406],[51.5517,-0.14124],[51.5532,-0.14102],[51.55694,-0.13853],[51.56058,-0.13736],[51.56468,-0.1351]],[[51.54943,-0.14091],[51.54643,-0.14176],[51.5446,-0.14142]],[[51.55147,-0.14103],[51.55068,-0.14076],[51.54943,-0.14091]],[[51.5513,-0.16603],[51.54956,-0.16345]],[[51.55077,-0.16511],[51.54963,-0.16338]],[[51.55601,-0.17741],[51.55448,-0.17189],[51.55301,-0.16879],[51.5513,-0.16603]],[[51.58446,-0.15984],[51.58021,-0.15196],[51.57706,-0.14465],[51.56954,-0.13735],[51.56667,-0.13512],[51.56501,-0.13479],[51.56055,-0.13719],[51.55698,-0.13833],[51.55318,-0.14085],[51.55147,-0.14103]],[[51.55712,-0.17927],[51.55601,-0.17741]],[[51.55701,-0.17886],[51.55628,-0.17769]],[[51.5707,-0.18648],[51.56939,-0.18312],[51.56801,-0.18142],[51.56473,-0.17989],[51.56319,-0.1795],[51.56019,-0.17937],[51.55816,-0.17976],[51.55712,-0.17927]],[[51.56468,-0.1351],[51.56631,-0.13516],[51.5685,-0.13669],[51.57698,-0.1448],[51.58011,-0.15209],[51.58436,-0.15998]],[[51.5707,-0.18648],[51.57111,-0.18794]],[[51.57115,-0.18791],[51.57097,-0.18724]],[[51.57111,-0.18794],[51.5722,-0.19402]],[[51.57239,-0.19387],[51.57115,-0.18791]],[[51.5722,-0.19402],[51.57272,-0.1954]],[[51.5728,-0.19541],[51.57239,-0.19387]],[[51.57272,-0.1954],[51.57334,-0.19703],[51.57359,-0.19856],[51.57359,-0.19998],[51.57308,-0.20381],[51.57355,-0.20667]],[[51.57358,-0.20663],[51.57311,-0.2038],[51.57361,-0.20017],[51.57362,-0.19851],[51.5728,-0.19541]],[[51.57355,-0.20667],[51.57411,-0.208]],[[51.57414,-0.20798],[51.57358,-0.20663]],[[51.57411,-0.208],[51.57489,-0.20973]],[[51.57489,-0.20965],[51.57414,-0.20798]],[[51.57489,-0.20973],[51.57508,-0.21014]],[[51.57507,-0.21005],[51.57489,-0.20965]],[[51.57571,-0.21148],[51.57507,-0.21005]],[[51.57508,-0.21014],[51.57571,-0.21157]],[[51.57571,-0.21157],[51.57585,-0.21188]],[[51.57586,-0.21181],[51.57571,-0.21148]],[[51.57585,-0.21188],[51.57636,-0.21303]],[[51.5764,-0.21292],[51.57586,-0.21181]],[[51.57636,-0.21303],[51.57647,-0.21329]],[[51.57651,-0.21315],[51.5764,-0.21292]],[[51.57647,-0.21329],[51.57756,-0.21584]],[[51.57757,-0.21575],[51.57651,-0.21315]],[[51.57756,-0.21584],[51.57832,-0.21773]],[[51.57835,-0.2177],[51.57757,-0.21575]],[[51.57832,-0.21773],[51.5784,-0.21792]],[[51.57843,-0.21789],[51.57835,-0.2177]],[[51.5784,-0.21792],[51.58,-0.22137],[51.58272,-0.22576]],[[51.58274,-0.22563],[51.58059,-0.22236],[51.57843,-0.21789]],[[51.58272,-0.22576],[51.58287,-0.22596]],[[51.58289,-0.2258],[51.58274,-0.22563]],[[51.58287,-0.22596],[51.58361,-0.22691]],[[51.58414,-0.22745],[51.58289,-0.2258]],[[51.58361,-0.22691],[51.58411,-0.22751]],[[51.58411,-0.22751],[51.5872,-0.23255],[51.5898,-0.23864]],[[51.58985,-0.2386],[51.58725,-0.23251],[51.58414,-0.22745]],[[51.58436,-0.15998],[51.58506,-0.16109]],[[51.58517,-0.16095],[51.58446,-0.15984]],[[51.58506,-0.16109],[51.58651,-0.16378]],[[51.58678,-0.16387],[51.58517,-0.16095]],[[51.58674,-0.16426],[51.58651,-0.16378]],[[51.58674,-0.16426],[51.58737,-0.16541]],[[51.58704,-0.16429],[51.58678,-0.16387]],[[51.58713,-0.16444],[51.58704,-0.16429]],[[51.6015,-0.1937],[51.5926,-0.17305],[51.59133,-0.1707],[51.58824,-0.16645],[51.58713,-0.16444]],[[51.58737,-0.16541],[51.59042,-0.16943]],[[51.5898,-0.23864],[51.5919,-0.24447],[51.5956,-0.25032]],[[51.59537,-0.24976],[51.59211,-0.2448],[51.58985,-0.2386]],[[51.59042,-0.16943],[51.59277,-0.17353],[51.59882,-0.18767]],[[51.59914,-0.25517],[51.59537,-0.24976]],[[51.5956,-0.25032],[51.59911,-0.25519]],[[51.59882,-0.18767],[51.60008,-0.19081]],[[51.59911,-0.25519],[51.59916,-0.25528]],[[51.59919,-0.25525],[51.59914,-0.25517]],[[51.59916,-0.25528],[51.60029,-0.258]],[[51.60033,-0.25797],[51.59919,-0.25525]],[[51.60008,-0.19081],[51.60087,-0.19268]],[[51.6003,-0.19124],[51.60008,-0.19081]],[[51.60029,-0.258],[51.60038,-0.25822]],[[51.6003,-0.19124],[51.60146,-0.19371]],[[51.60041,-0.25819],[51.60033,-0.25797]],[[51.60038,-0.25822],[51.60286,-0.26426],[51.605,-0.26755],[51.60817,-0.27023],[51.6114,-0.27169],[51.61239,-0.27257]],[[51.60086,-0.2593],[51.60041,-0.25819]],[[51.61088,-0.2714],[51.60851,-0.2704],[51.60489,-0.26735],[51.60343,-0.26518],[51.60086,-0.2593]],[[51.60087,-0.19268],[51.60179,-0.19464]],[[51.60146,-0.19371],[51.60256,-0.19496],[51.60382,-0.19494],[51.60641,-0.19097],[51.60822,-0.18905],[51.60949,-0.18833],[51.61354,-0.18704]],[[51.61354,-0.18698],[51.60976,-0.18817],[51.60804,-0.1891],[51.60637,-0.19093],[51.60383,-0.19486],[51.60267,-0.19496],[51.6015,-0.1937]],[[51.60331,-0.19807],[51.6015,-0.1937]],[[51.60179,-0.19464],[51.60331,-0.19807]],[[51.60331,-0.19807],[51.60333,-0.19811]],[[51.60339,-0.19825],[51.60333,-0.19811]],[[51.6047,-0.20121],[51.60339,-0.19825]],[[51.6047,-0.20121],[51.60547,-0.20302]],[[51.60704,-0.20668],[51.60547,-0.20302]],[[51.60712,-0.20687],[51.60704,-0.20668]],[[51.60792,-0.20885],[51.60712,-0.20687]],[[51.60806,-0.20934],[51.60792,-0.20885]],[[51.60826,-0.21015],[51.60806,-0.20934]],[[51.61283,-0.27311],[51.61187,-0.27196],[51.61088,-0.2714]],[[51.61239,-0.27257],[51.61363,-0.27506]],[[51.61343,-0.27425],[51.61283,-0.27311]],[[51.61354,-0.18704],[51.61386,-0.18692]],[[51.61386,-0.18687],[51.61354,-0.18698]],[[51.61386,-0.18692],[51.61592,-0.18626]],[[51.61592,-0.1862],[51.61386,-0.18687]],[[51.61592,-0.18626],[51.61608,-0.1862]],[[51.61608,-0.18615],[51.61592,-0.1862]],[[51.61608,-0.1862],[51.61899,-0.18506],[51.628,-0.17983],[51.63037,-0.17917],[51.63285,-0.17926],[51.63423,-0.17977],[51.6401,-0.18419]],[[51.63037,-0.17913],[51.62799,-0.17977],[51.61899,-0.18502],[51.61608,-0.18615]],[[51.63968,-0.1838],[51.63425,-0.17972],[51.63286,-0.1792],[51.63037,-0.17913]],[[51.64737,-0.18972],[51.63968,-0.1838]],[[51.6401,-0.18419],[51.64736,-0.18977]],[[51.64736,-0.18977],[51.64787,-0.19017]],[[51.64788,-0.19012],[51.64737,-0.18972]],[[51.64787,-0.19017],[51.64887,-0.19126],[51.65031,-0.19378]],[[51.64916,-0.19164],[51.64788,-0.19012]],[[51.65048,-0.19402],[51.64916,-0.19164]]]},{"ref":"Piccadilly","name":"Piccadilly line: Barons Court → Hounslow West","colour":"#094fa3","segs":[[[51.45878,-0.44541],[51.45691,-0.44821],[51.45643,-0.44952],[51.45603,-0.45193],[51.456,-0.45524],[51.45618,-0.45652],[51.45777,-0.46006],[51.46479,-0.47096],[51.46626,-0.47199],[51.46806,-0.47211],[51.47016,-0.47121],[51.4721,-0.46949],[51.47274,-0.46807],[51.4732,-0.46574],[51.47309,-0.45917]],[[51.46616,-0.4262],[51.46517,-0.43374],[51.46432,-0.437],[51.46319,-0.43934],[51.45878,-0.44541]],[[51.46616,-0.4262],[51.46612,-0.42764]],[[51.46612,-0.42764],[51.46634,-0.43415]],[[51.46665,-0.4227],[51.46616,-0.4262]],[[51.46904,-0.44704],[51.46769,-0.44346],[51.46684,-0.44009],[51.4663,-0.42584]],[[51.4663,-0.42584],[51.46681,-0.42255]],[[51.46634,-0.43415],[51.46658,-0.43891],[51.46692,-0.44133],[51.46798,-0.44481],[51.47037,-0.45062]],[[51.46935,-0.41413],[51.46665,-0.4227]],[[51.46681,-0.42255],[51.46937,-0.41415]],[[51.4723,-0.45444],[51.46904,-0.44704]],[[51.47027,-0.41137],[51.46935,-0.41413]],[[51.46937,-0.41415],[51.4703,-0.4114]],[[51.47033,-0.4112],[51.47027,-0.41137]],[[51.4703,-0.4114],[51.47036,-0.41123]],[[51.47189,-0.40668],[51.47033,-0.4112]],[[51.47036,-0.41123],[51.47191,-0.4067]],[[51.47037,-0.45062],[51.47215,-0.45451]],[[51.47123,-0.36725],[51.47117,-0.37012],[51.4714,-0.37228],[51.47194,-0.37436],[51.47354,-0.3784],[51.47389,-0.38015],[51.47405,-0.38216],[51.47376,-0.38454]],[[51.47123,-0.36706],[51.47123,-0.36725]],[[51.47135,-0.36379],[51.47123,-0.36706]],[[51.47386,-0.38457],[51.47409,-0.38214],[51.47385,-0.37965],[51.47348,-0.37808],[51.47155,-0.37284],[51.47124,-0.37077],[51.47127,-0.36726]],[[51.47127,-0.36726],[51.47128,-0.36706]],[[51.47128,-0.36706],[51.4714,-0.3638]],[[51.47137,-0.36355],[51.47135,-0.36379]],[[51.47304,-0.35687],[51.47174,-0.36134],[51.47137,-0.36355]],[[51.4714,-0.3638],[51.47143,-0.36358]],[[51.47143,-0.36358],[51.47181,-0.36137],[51.47307,-0.3569]],[[51.47358,-0.38562],[51.47363,-0.38857],[51.47472,-0.39268],[51.47516,-0.39548],[51.4748,-0.39766],[51.47189,-0.40668]],[[51.47191,-0.4067],[51.47463,-0.39834],[51.47515,-0.39598],[51.47501,-0.39297],[51.47357,-0.38732],[51.47367,-0.38565]],[[51.47215,-0.45451],[51.47256,-0.4559]],[[51.47309,-0.45917],[51.47271,-0.4558],[51.4723,-0.45444]],[[51.4724,-0.47209],[51.47242,-0.48774]],[[51.47291,-0.46351],[51.4724,-0.47209]],[[51.47256,-0.4559],[51.47292,-0.45921]],[[51.4726,-0.48774],[51.47263,-0.47221],[51.47325,-0.46751]],[[51.47292,-0.45921],[51.47291,-0.46351]],[[51.47313,-0.35661],[51.47304,-0.35687]],[[51.47307,-0.3569],[51.47316,-0.35664]],[[51.47325,-0.46751],[51.47352,-0.4662],[51.47368,-0.46272],[51.47309,-0.45917]],[[51.47606,-0.35346],[51.47452,-0.35441],[51.47313,-0.35661]],[[51.47316,-0.35664],[51.47458,-0.35442],[51.47607,-0.35353]],[[51.47376,-0.38454],[51.47358,-0.38562]],[[51.47367,-0.38565],[51.47386,-0.38457]],[[51.47623,-0.35337],[51.47606,-0.35346]],[[51.47607,-0.35353],[51.47623,-0.35344]],[[51.47623,-0.35344],[51.47972,-0.35328],[51.48073,-0.35271],[51.48175,-0.3516],[51.48281,-0.34938],[51.48382,-0.3443],[51.4845,-0.34256],[51.48982,-0.33564],[51.49233,-0.33071]],[[51.4923,-0.33069],[51.48977,-0.33563],[51.48435,-0.34274],[51.48367,-0.34473],[51.48277,-0.34935],[51.48172,-0.35157],[51.47978,-0.35319],[51.47623,-0.35337]],[[51.48998,-0.19769],[51.49007,-0.19952],[51.49105,-0.20187]],[[51.4904,-0.19592],[51.48998,-0.19769]],[[51.4901,-0.20853],[51.49003,-0.21098],[51.49025,-0.21313]],[[51.49119,-0.20446],[51.4901,-0.20853]],[[51.49028,-0.21313],[51.49003,-0.21034],[51.49014,-0.20854]],[[51.49014,-0.20854],[51.49016,-0.20829]],[[51.49016,-0.20829],[51.49139,-0.20357],[51.49132,-0.20248],[51.49073,-0.20104]],[[51.49025,-0.21313],[51.4903,-0.21365]],[[51.49033,-0.21365],[51.49028,-0.21313]],[[51.4903,-0.21365],[51.49034,-0.21449]],[[51.49036,-0.21449],[51.49033,-0.21365]],[[51.49034,-0.21449],[51.49021,-0.21973],[51.49052,-0.22112],[51.49118,-0.22228]],[[51.49118,-0.22214],[51.49058,-0.22104],[51.4903,-0.21983],[51.49036,-0.21449]],[[51.49373,-0.18022],[51.49495,-0.18621],[51.49482,-0.18824],[51.49351,-0.19103],[51.4904,-0.19592]],[[51.49073,-0.20104],[51.49002,-0.19887],[51.49007,-0.19732],[51.49045,-0.19599]],[[51.49045,-0.19599],[51.4941,-0.19039],[51.49491,-0.18831],[51.49506,-0.18619],[51.49382,-0.18019]],[[51.49105,-0.20187],[51.49131,-0.20288],[51.49119,-0.20446]],[[51.49118,-0.22228],[51.49145,-0.22255]],[[51.49145,-0.22245],[51.49118,-0.22214]],[[51.49145,-0.22255],[51.49153,-0.22263]],[[51.49155,-0.22255],[51.49145,-0.22245]],[[51.49153,-0.22263],[51.49169,-0.22279]],[[51.49172,-0.22274],[51.49155,-0.22255]],[[51.49169,-0.22279],[51.49259,-0.22375]],[[51.49261,-0.22368],[51.49172,-0.22274]],[[51.49285,-0.32956],[51.4923,-0.33069]],[[51.49233,-0.33071],[51.49288,-0.32959]],[[51.49259,-0.22375],[51.49296,-0.22428]],[[51.493,-0.22419],[51.49261,-0.22368]],[[51.49366,-0.32795],[51.49285,-0.32956]],[[51.49288,-0.32959],[51.49368,-0.32798]],[[51.49296,-0.22428],[51.49365,-0.22647]],[[51.49371,-0.22661],[51.493,-0.22419]],[[51.49365,-0.22647],[51.49362,-0.22951]],[[51.49362,-0.22951],[51.49417,-0.23641],[51.49468,-0.23979]],[[51.49365,-0.22952],[51.49371,-0.22661]],[[51.49472,-0.23979],[51.4942,-0.2364],[51.49365,-0.22952]],[[51.4939,-0.32754],[51.49366,-0.32795]],[[51.49368,-0.32798],[51.49392,-0.32758]],[[51.49393,-0.1766],[51.49373,-0.18022]],[[51.49382,-0.18019],[51.49405,-0.17659]],[[51.49789,-0.3206],[51.4967,-0.32333],[51.4939,-0.32754]],[[51.49392,-0.32758],[51.49672,-0.32337],[51.49793,-0.32062]],[[51.49406,-0.17195],[51.49393,-0.1766]],[[51.49399,-0.17265],[51.49414,-0.17185],[51.49489,-0.17101],[51.49534,-0.16983],[51.49675,-0.1689]],[[51.49415,-0.17432],[51.49399,-0.17265]],[[51.49405,-0.17659],[51.49415,-0.17432]],[[51.49656,-0.16892],[51.49535,-0.16967],[51.49485,-0.17093],[51.49406,-0.17195]],[[51.49445,-0.26673],[51.49446,-0.26718]],[[51.49453,-0.26511],[51.49445,-0.26673]],[[51.49446,-0.26718],[51.4952,-0.27046],[51.49703,-0.27321],[51.49793,-0.2751]],[[51.49449,-0.26664],[51.49458,-0.26511]],[[51.49451,-0.2671],[51.49449,-0.26664]],[[51.49799,-0.27507],[51.49707,-0.27314],[51.49527,-0.27046],[51.49451,-0.2671]],[[51.49494,-0.26138],[51.49453,-0.26511]],[[51.49458,-0.26511],[51.495,-0.26139]],[[51.49468,-0.23979],[51.49505,-0.24821]],[[51.4951,-0.24821],[51.49472,-0.23979]],[[51.49503,-0.26032],[51.49494,-0.26138]],[[51.495,-0.26139],[51.49509,-0.26032]],[[51.49504,-0.26014],[51.49503,-0.26032]],[[51.49506,-0.25945],[51.49504,-0.26014]],[[51.4951,-0.25543],[51.49505,-0.25896]],[[51.49505,-0.25896],[51.49506,-0.25945]],[[51.49505,-0.24821],[51.49512,-0.25029]],[[51.49509,-0.26032],[51.4951,-0.26014]],[[51.4951,-0.26014],[51.49513,-0.25543]],[[51.4951,-0.25515],[51.4951,-0.25543]],[[51.49512,-0.25029],[51.4951,-0.25515]],[[51.49517,-0.25029],[51.4951,-0.24821]],[[51.49513,-0.25543],[51.49514,-0.25514]],[[51.49514,-0.25514],[51.49517,-0.25029]],[[51.5007,-0.16209],[51.49656,-0.16892]],[[51.49675,-0.1689],[51.49707,-0.16842]],[[51.49707,-0.16842],[51.49984,-0.16339],[51.50078,-0.16224]],[[51.4986,-0.31715],[51.49789,-0.3206]],[[51.49793,-0.32062],[51.49945,-0.31445]],[[51.49793,-0.2751],[51.49928,-0.27767],[51.50111,-0.27885]],[[51.49963,-0.27766],[51.49799,-0.27507]],[[51.49867,-0.31674],[51.4986,-0.31715]],[[51.49912,-0.31513],[51.49867,-0.31674]],[[51.49933,-0.31447],[51.49912,-0.31513]],[[51.49945,-0.31391],[51.49933,-0.31447]],[[51.49945,-0.31445],[51.50092,-0.30786],[51.50277,-0.30271],[51.50322,-0.30079]],[[51.50315,-0.30078],[51.50271,-0.30265],[51.5008,-0.30784],[51.49945,-0.31391]],[[51.50109,-0.27878],[51.49963,-0.27766]],[[51.50174,-0.16047],[51.5007,-0.16209]],[[51.50078,-0.16224],[51.50175,-0.16082]],[[51.50153,-0.27892],[51.50109,-0.27878]],[[51.50312,-0.28048],[51.50229,-0.27952],[51.50109,-0.27878]],[[51.50111,-0.27885],[51.50247,-0.27974],[51.5034,-0.28107]],[[51.50312,-0.28028],[51.50153,-0.27892]],[[51.5025,-0.15544],[51.50174,-0.16047]],[[51.50175,-0.16082],[51.50264,-0.15538]],[[51.50288,-0.15285],[51.5025,-0.15544]],[[51.50264,-0.15538],[51.50301,-0.15291]],[[51.5033,-0.1506],[51.50288,-0.15285]],[[51.50301,-0.15291],[51.50337,-0.15062]],[[51.50357,-0.28121],[51.50312,-0.28048]],[[51.50481,-0.28308],[51.50312,-0.28028]],[[51.5058,-0.28806],[51.50436,-0.29265],[51.50315,-0.30078]],[[51.50322,-0.30079],[51.50436,-0.29306],[51.50588,-0.28814]],[[51.50806,-0.13975],[51.50406,-0.14801],[51.5033,-0.1506]],[[51.50337,-0.15062],[51.50412,-0.14808],[51.50737,-0.1417],[51.50811,-0.13981]],[[51.5034,-0.28107],[51.50356,-0.28144]],[[51.5034,-0.28107],[51.50418,-0.28254]],[[51.50356,-0.28144],[51.50536,-0.2851]],[[51.50367,-0.2814],[51.50357,-0.28121]],[[51.50386,-0.28176],[51.50367,-0.2814]],[[51.51013,-0.28822],[51.50803,-0.28757],[51.50678,-0.28664],[51.50386,-0.28176]],[[51.50418,-0.28254],[51.50554,-0.28534],[51.5058,-0.28657],[51.5058,-0.28806]],[[51.5055,-0.28476],[51.50481,-0.28308]],[[51.50536,-0.2851],[51.50546,-0.28528]],[[51.50546,-0.28528],[51.50585,-0.28585]],[[51.50588,-0.28814],[51.50589,-0.28659],[51.5055,-0.28476]],[[51.50585,-0.28585],[51.50754,-0.28741],[51.51013,-0.28827]],[[51.51432,-0.12219],[51.51248,-0.12526],[51.51153,-0.12757],[51.50987,-0.13401],[51.50806,-0.13975]],[[51.50811,-0.13981],[51.51005,-0.13385],[51.51065,-0.1307],[51.51178,-0.12713],[51.51252,-0.12532],[51.51435,-0.12225]],[[51.51013,-0.28827],[51.51023,-0.28827]],[[51.51063,-0.2882],[51.51013,-0.28822]],[[51.51023,-0.28827],[51.51065,-0.28825]],[[51.51471,-0.28816],[51.51355,-0.28767],[51.51063,-0.2882]],[[51.51065,-0.28825],[51.51355,-0.28773],[51.51469,-0.28821]],[[51.51606,-0.12011],[51.51432,-0.12219]],[[51.51435,-0.12225],[51.51616,-0.1203]],[[51.51469,-0.28821],[51.51512,-0.28868]],[[51.51513,-0.28863],[51.51471,-0.28816]],[[51.51512,-0.28868],[51.51594,-0.28946],[51.51647,-0.28951],[51.51834,-0.28784]],[[51.51831,-0.28779],[51.51653,-0.28943],[51.51593,-0.2894],[51.51513,-0.28863]],[[51.51849,-0.12085],[51.51657,-0.11994],[51.51606,-0.12011]],[[51.51616,-0.1203],[51.51833,-0.12088]],[[51.52862,-0.28533],[51.52605,-0.28379],[51.52227,-0.28372],[51.52021,-0.28501],[51.51831,-0.28779]],[[51.51833,-0.12088],[51.51897,-0.12115],[51.52166,-0.12425],[51.52335,-0.12432],[51.52565,-0.12547],[51.52905,-0.12391],[51.53188,-0.12308],[51.53834,-0.12266]],[[51.51834,-0.28784],[51.52023,-0.28507],[51.52239,-0.28374],[51.52604,-0.28383],[51.52864,-0.28542]],[[51.52019,-0.12255],[51.51898,-0.12108],[51.51849,-0.12085]],[[51.52223,-0.12427],[51.52153,-0.12405],[51.52019,-0.12255]],[[51.55248,-0.11337],[51.55048,-0.11634],[51.5492,-0.11772],[51.5459,-0.12006],[51.54254,-0.12175],[51.54058,-0.12231],[51.53107,-0.12292],[51.52593,-0.12539],[51.52335,-0.12423],[51.52223,-0.12427]],[[51.52896,-0.28569],[51.52862,-0.28533]],[[51.52864,-0.28542],[51.52898,-0.28578]],[[51.53146,-0.28935],[51.52896,-0.28569]],[[51.52898,-0.28578],[51.53144,-0.28939]],[[51.53144,-0.28939],[51.53156,-0.28956]],[[51.53156,-0.28949],[51.53146,-0.28935]],[[51.53156,-0.28956],[51.53276,-0.29111]],[[51.53279,-0.29108],[51.53156,-0.28949]],[[51.53276,-0.29111],[51.53307,-0.29143]],[[51.5331,-0.2914],[51.53279,-0.29108]],[[51.53307,-0.29143],[51.53493,-0.29317]],[[51.53494,-0.29314],[51.5331,-0.2914]],[[51.53493,-0.29317],[51.53511,-0.29333]],[[51.53512,-0.29329],[51.53494,-0.29314]],[[51.53511,-0.29333],[51.5378,-0.29567]],[[51.53781,-0.29562],[51.53512,-0.29329]],[[51.5378,-0.29567],[51.53799,-0.29584]],[[51.538,-0.29579],[51.53781,-0.29562]],[[51.53799,-0.29584],[51.53884,-0.29656]],[[51.53883,-0.2965],[51.538,-0.29579]],[[51.53834,-0.12266],[51.5416,-0.12215],[51.54411,-0.12106],[51.54842,-0.11835],[51.55049,-0.11636]],[[51.53917,-0.29682],[51.53883,-0.2965]],[[51.53884,-0.29656],[51.53917,-0.29686]],[[51.53917,-0.29686],[51.54039,-0.29902]],[[51.54041,-0.299],[51.53917,-0.29682]],[[51.54039,-0.29902],[51.54051,-0.29937]],[[51.54054,-0.29934],[51.54041,-0.299]],[[51.54051,-0.29937],[51.54149,-0.30208]],[[51.54152,-0.30205],[51.54054,-0.29934]],[[51.54149,-0.30208],[51.54155,-0.30225]],[[51.54159,-0.30222],[51.54152,-0.30205]],[[51.54155,-0.30225],[51.54275,-0.30412],[51.54395,-0.30491]],[[51.54395,-0.30485],[51.54273,-0.30402],[51.54159,-0.30222]],[[51.54395,-0.30491],[51.54412,-0.305]],[[51.54414,-0.30495],[51.54395,-0.30485]],[[51.54412,-0.305],[51.54647,-0.30701]],[[51.54649,-0.30698],[51.54414,-0.30495]],[[51.54647,-0.30701],[51.54651,-0.30708]],[[51.54653,-0.30704],[51.54649,-0.30698]],[[51.54651,-0.30708],[51.54757,-0.30881],[51.55105,-0.31634],[51.55519,-0.32726],[51.55681,-0.33601]],[[51.55522,-0.32724],[51.55118,-0.31656],[51.54759,-0.30875],[51.54653,-0.30704]],[[51.54721,-0.47608],[51.54656,-0.47777]],[[51.54741,-0.47553],[51.54721,-0.47608]],[[51.54721,-0.47608],[51.54743,-0.47555]],[[51.54796,-0.47307],[51.54741,-0.47553]],[[51.54743,-0.47555],[51.548,-0.47309]],[[51.54881,-0.46575],[51.54808,-0.46925],[51.54796,-0.47307]],[[51.548,-0.47309],[51.54815,-0.46897],[51.54887,-0.46571]],[[51.5489,-0.46543],[51.54881,-0.46575]],[[51.54887,-0.46571],[51.54895,-0.46543]],[[51.55025,-0.46113],[51.5489,-0.46543]],[[51.54895,-0.46543],[51.55031,-0.46107]],[[51.55032,-0.46088],[51.55025,-0.46113]],[[51.55031,-0.46107],[51.55039,-0.46079]],[[51.55068,-0.45966],[51.55032,-0.46088]],[[51.55039,-0.46079],[51.55071,-0.45969]],[[51.55049,-0.11636],[51.55381,-0.11196]],[[51.55072,-0.45956],[51.55068,-0.45966]],[[51.55071,-0.45969],[51.55074,-0.45958]],[[51.55364,-0.4503],[51.55072,-0.45956]],[[51.55074,-0.45958],[51.55366,-0.45032]],[[51.55374,-0.11189],[51.55248,-0.11337]],[[51.55389,-0.44951],[51.55364,-0.4503]],[[51.55366,-0.45032],[51.55391,-0.44953]],[[51.55928,-0.10701],[51.55742,-0.10809],[51.55374,-0.11189]],[[51.55381,-0.11196],[51.55545,-0.11005]],[[51.55398,-0.44925],[51.55389,-0.44951]],[[51.55391,-0.44953],[51.55399,-0.44932]],[[51.55426,-0.44849],[51.55398,-0.44925]],[[51.55399,-0.44932],[51.55428,-0.44857]],[[51.56197,-0.44201],[51.55705,-0.4445],[51.55546,-0.44625],[51.55426,-0.44849]],[[51.55428,-0.44857],[51.55547,-0.44635],[51.55694,-0.44468],[51.562,-0.44204]],[[51.55684,-0.33599],[51.55522,-0.32724]],[[51.55545,-0.11005],[51.55765,-0.10813]],[[51.55681,-0.33601],[51.55738,-0.33897],[51.55764,-0.34295],[51.55829,-0.34504],[51.55993,-0.34769],[51.56346,-0.35089]],[[51.56347,-0.35084],[51.55994,-0.34763],[51.55824,-0.34483],[51.55768,-0.34296],[51.55741,-0.33895],[51.55684,-0.33599]],[[51.55765,-0.10813],[51.55924,-0.10716]],[[51.55924,-0.10716],[51.56404,-0.10703]],[[51.56103,-0.10704],[51.55928,-0.10701]],[[51.56217,-0.10689],[51.56103,-0.10704]],[[51.56199,-0.442],[51.56197,-0.44201]],[[51.56208,-0.44191],[51.56199,-0.442]],[[51.562,-0.44204],[51.56209,-0.44194]],[[51.5637,-0.43994],[51.56208,-0.44191]],[[51.56209,-0.44194],[51.56374,-0.43997]],[[51.56402,-0.1066],[51.56217,-0.10689]],[[51.56346,-0.35089],[51.56486,-0.35256]],[[51.56419,-0.3516],[51.56347,-0.35084]],[[51.56375,-0.43987],[51.5637,-0.43994]],[[51.56374,-0.43997],[51.56376,-0.43994]],[[51.57309,-0.41309],[51.57095,-0.423],[51.56375,-0.43987]],[[51.56376,-0.43994],[51.57097,-0.42305],[51.57312,-0.41312]],[[51.56515,-0.10648],[51.56402,-0.1066]],[[51.56404,-0.10703],[51.56517,-0.10684]],[[51.56488,-0.35251],[51.56419,-0.3516]],[[51.56486,-0.35256],[51.56497,-0.35274]],[[51.56501,-0.35271],[51.56488,-0.35251]],[[51.56497,-0.35274],[51.56629,-0.35491]],[[51.56629,-0.35479],[51.56501,-0.35271]],[[51.56764,-0.10571],[51.56515,-0.10648]],[[51.56517,-0.10684],[51.56686,-0.10625],[51.56809,-0.10527]],[[51.56629,-0.35491],[51.56649,-0.35516]],[[51.56649,-0.35504],[51.56629,-0.35479]],[[51.56649,-0.35516],[51.56697,-0.35565]],[[51.56698,-0.3556],[51.56649,-0.35504]],[[51.56697,-0.35565],[51.56707,-0.35574]],[[51.56709,-0.35571],[51.56698,-0.3556]],[[51.56707,-0.35574],[51.56809,-0.35679]],[[51.56811,-0.35674],[51.56709,-0.35571]],[[51.56809,-0.35679],[51.56821,-0.35691]],[[51.58912,-0.10221],[51.58514,-0.10031],[51.57733,-0.09885],[51.57311,-0.09567],[51.57192,-0.09534],[51.57105,-0.09573],[51.56937,-0.09803],[51.569,-0.09972],[51.5688,-0.10362],[51.56809,-0.10527]],[[51.56822,-0.35687],[51.56811,-0.35674]],[[51.56821,-0.35691],[51.56922,-0.35811]],[[51.56925,-0.35808],[51.56822,-0.35687]],[[51.56922,-0.35811],[51.5693,-0.35822]],[[51.56933,-0.35819],[51.56925,-0.35808]],[[51.5693,-0.35822],[51.57004,-0.35927]],[[51.57006,-0.35923],[51.56933,-0.35819]],[[51.57004,-0.35927],[51.57036,-0.35976]],[[51.57038,-0.35971],[51.57006,-0.35923]],[[51.57036,-0.35976],[51.57321,-0.36483],[51.57464,-0.36874]],[[51.57464,-0.36863],[51.57312,-0.36456],[51.57038,-0.35971]],[[51.57316,-0.4128],[51.57309,-0.41309]],[[51.57312,-0.41312],[51.57319,-0.41281]],[[51.5732,-0.41263],[51.57316,-0.4128]],[[51.57319,-0.41281],[51.57323,-0.41265]],[[51.57648,-0.39762],[51.5732,-0.41263]],[[51.57323,-0.41265],[51.57651,-0.39764]],[[51.57464,-0.36874],[51.57498,-0.37029]],[[51.57501,-0.37026],[51.57464,-0.36863]],[[51.57498,-0.37029],[51.57502,-0.37049]],[[51.57504,-0.37048],[51.57501,-0.37026]],[[51.57502,-0.37049],[51.57513,-0.37104]],[[51.57515,-0.37103],[51.57504,-0.37048]],[[51.57513,-0.37104],[51.57517,-0.37132]],[[51.57557,-0.37339],[51.57515,-0.37103]],[[51.57517,-0.37132],[51.57552,-0.37354]],[[51.57552,-0.37354],[51.57653,-0.37988]],[[51.57657,-0.37988],[51.57557,-0.37339]],[[51.57658,-0.39705],[51.57648,-0.39762]],[[51.57651,-0.39764],[51.5766,-0.39706]],[[51.57653,-0.37988],[51.57654,-0.37996]],[[51.57654,-0.37996],[51.57706,-0.38442],[51.57721,-0.38838],[51.57709,-0.39245],[51.57658,-0.39705]],[[51.57658,-0.37996],[51.57657,-0.37988]],[[51.5766,-0.39706],[51.57711,-0.39246],[51.57725,-0.38899],[51.57711,-0.38465],[51.57658,-0.37996]],[[51.59043,-0.10339],[51.58912,-0.10221]],[[51.59061,-0.10312],[51.58969,-0.10205]],[[51.59043,-0.10339],[51.59229,-0.10433],[51.5982,-0.11119],[51.59952,-0.11346],[51.60235,-0.12],[51.60586,-0.12271],[51.60683,-0.12417]],[[51.60633,-0.12292],[51.60601,-0.12238],[51.60254,-0.11972],[51.59919,-0.11228],[51.59742,-0.10976],[51.59223,-0.10393],[51.59095,-0.1035]],[[51.61101,-0.13229],[51.60978,-0.13088],[51.60776,-0.12548],[51.60633,-0.12292]],[[51.60795,-0.12634],[51.60683,-0.12417]],[[51.61099,-0.13237],[51.60966,-0.13081],[51.60795,-0.12634]],[[51.61099,-0.13237],[51.61223,-0.1329]],[[51.61223,-0.13284],[51.61101,-0.13229]],[[51.61223,-0.1329],[51.61372,-0.13292]],[[51.61372,-0.13287],[51.61223,-0.13284]],[[51.61372,-0.13292],[51.61711,-0.13335],[51.61869,-0.13428]],[[51.61871,-0.13423],[51.61679,-0.133],[51.61372,-0.13287]],[[51.61869,-0.13428],[51.61999,-0.13515],[51.62267,-0.13564]],[[51.62267,-0.13559],[51.62001,-0.13511],[51.61871,-0.13423]],[[51.62267,-0.13564],[51.62529,-0.13561],[51.62755,-0.13416]],[[51.62752,-0.1341],[51.62529,-0.13556],[51.62267,-0.13559]],[[51.63335,-0.12616],[51.62752,-0.1341]],[[51.62755,-0.13416],[51.63338,-0.12622]],[[51.63438,-0.12518],[51.63335,-0.12616]],[[51.63338,-0.12622],[51.6344,-0.12524]],[[51.63648,-0.12483],[51.63438,-0.12518]],[[51.6344,-0.12524],[51.63647,-0.12489]],[[51.63647,-0.12489],[51.64503,-0.12799],[51.64628,-0.12921],[51.64749,-0.1317]],[[51.64756,-0.13161],[51.64644,-0.12928],[51.6452,-0.12801],[51.63648,-0.12483]],[[51.64749,-0.1317],[51.64757,-0.13189]],[[51.64764,-0.13181],[51.64756,-0.13161]],[[51.64757,-0.13189],[51.64789,-0.13257]],[[51.64793,-0.13245],[51.64764,-0.13181]],[[51.64789,-0.13257],[51.64933,-0.13634],[51.64991,-0.1395],[51.65029,-0.14412],[51.65151,-0.14903]],[[51.6516,-0.14895],[51.65042,-0.14466],[51.64994,-0.13947],[51.64945,-0.1367],[51.64793,-0.13245]]]},{"ref":"Victoria","name":"Victoria line: Brixton → Seven Sisters","colour":"#0a9cda","segs":[[[51.46235,-0.11361],[51.46352,-0.11996],[51.46412,-0.12196],[51.46541,-0.12428],[51.467,-0.12555],[51.46886,-0.12578],[51.47022,-0.12527],[51.47191,-0.1232],[51.4743,-0.12107],[51.47642,-0.11995],[51.47753,-0.11996],[51.48218,-0.12118],[51.4847,-0.12258],[51.4881,-0.12948],[51.48877,-0.13201],[51.4894,-0.13856],[51.49039,-0.14146],[51.49168,-0.14315],[51.49296,-0.14393],[51.4936,-0.14415],[51.49584,-0.14366]],[[51.46895,-0.12478],[51.46761,-0.1248],[51.46647,-0.12431],[51.46535,-0.12332],[51.46458,-0.12215],[51.46362,-0.11952],[51.46248,-0.11355]],[[51.47299,-0.12123],[51.47072,-0.12381],[51.46895,-0.12478]],[[51.49359,-0.14377],[51.49163,-0.14227],[51.49017,-0.13976],[51.48967,-0.13812],[51.48894,-0.13193],[51.48848,-0.13012],[51.48593,-0.12434],[51.4848,-0.12239],[51.48336,-0.12133],[51.47618,-0.11926],[51.4743,-0.11989],[51.47299,-0.12123]],[[51.49578,-0.14339],[51.49359,-0.14377]],[[51.49723,-0.14252],[51.49578,-0.14339]],[[51.49584,-0.14366],[51.49728,-0.14265]],[[51.51292,-0.14175],[51.51063,-0.14326],[51.50927,-0.14353],[51.50808,-0.14321],[51.50559,-0.14144],[51.50178,-0.14012],[51.49961,-0.14077],[51.49723,-0.14252]],[[51.49728,-0.14265],[51.49965,-0.141],[51.50179,-0.14033],[51.50504,-0.14148],[51.50808,-0.14354]],[[51.50808,-0.14354],[51.50996,-0.14366],[51.51273,-0.14235],[51.51436,-0.14205],[51.51762,-0.14263]],[[51.51323,-0.14161],[51.51292,-0.14175]],[[51.51765,-0.14223],[51.51434,-0.1415],[51.51323,-0.14161]],[[51.51762,-0.14263],[51.51868,-0.14264]],[[51.5235,-0.14015],[51.52242,-0.14124],[51.52118,-0.14192],[51.5199,-0.14231],[51.51765,-0.14223]],[[51.51868,-0.14264],[51.51979,-0.14272],[51.52102,-0.14225],[51.52216,-0.14139],[51.52357,-0.13975]],[[51.53133,-0.12101],[51.53047,-0.12404],[51.52956,-0.12924],[51.52821,-0.13356],[51.52668,-0.13643],[51.5235,-0.14015]],[[51.52357,-0.13975],[51.52586,-0.13727]],[[51.52586,-0.13727],[51.52786,-0.13399]],[[51.52786,-0.13399],[51.52908,-0.13047]],[[51.52908,-0.13047],[51.52944,-0.12916]],[[51.52944,-0.12916],[51.53041,-0.12372],[51.53119,-0.12088]],[[51.53119,-0.12088],[51.53843,-0.10564]],[[51.54683,-0.10328],[51.54474,-0.10213],[51.54264,-0.10231],[51.53866,-0.10557],[51.53133,-0.12101]],[[51.53843,-0.10564],[51.54071,-0.10404],[51.5428,-0.10341]],[[51.5428,-0.10341],[51.545,-0.10318],[51.54679,-0.1037]],[[51.54679,-0.1037],[51.5552,-0.10674],[51.5576,-0.10707],[51.55929,-0.10692]],[[51.5505,-0.10481],[51.54683,-0.10328]],[[51.55929,-0.10684],[51.5576,-0.10676],[51.55292,-0.10569],[51.5505,-0.10481]],[[51.55929,-0.10692],[51.56173,-0.10708]],[[51.56401,-0.10643],[51.55929,-0.10684]],[[51.56173,-0.10708],[51.56403,-0.1068]],[[51.56515,-0.10631],[51.56401,-0.10643]],[[51.56403,-0.1068],[51.56515,-0.10662]],[[51.56515,-0.10662],[51.56816,-0.10576],[51.5691,-0.10464],[51.56952,-0.10336],[51.57093,-0.09564],[51.57362,-0.08798],[51.57502,-0.08584],[51.57819,-0.08255],[51.57937,-0.08077]],[[51.56555,-0.10626],[51.56515,-0.10631]],[[51.5796,-0.08],[51.57814,-0.08238],[51.57496,-0.08566],[51.57351,-0.08789],[51.57085,-0.09558],[51.5701,-0.09878],[51.5694,-0.10326],[51.569,-0.10447],[51.56806,-0.10553],[51.56555,-0.10626]],[[51.57937,-0.08077],[51.57998,-0.07963]],[[51.58337,-0.07204],[51.5796,-0.08]],[[51.57998,-0.07963],[51.58346,-0.07279]],[[51.58282,-0.01992],[51.58303,-0.02094]],[[51.58308,-0.0209],[51.58294,-0.01999]],[[51.58303,-0.02094],[51.58666,-0.03983],[51.58681,-0.04351],[51.58641,-0.05006],[51.58745,-0.05503]],[[51.5876,-0.05499],[51.58654,-0.05007],[51.58695,-0.04358],[51.58678,-0.03987],[51.58308,-0.0209]],[[51.58745,-0.05503],[51.58801,-0.05888],[51.58768,-0.06312],[51.58703,-0.06518],[51.58337,-0.07204]],[[51.58346,-0.07279],[51.58771,-0.06429],[51.58829,-0.06034],[51.5876,-0.05499]]]},{"ref":"Waterloo \u0026 City","name":"Waterloo \u0026 City line: Bank → Waterloo","colour":"#93ceba","segs":[[[51.50181,-0.11071],[51.50227,-0.11191]],[[51.50227,-0.11191],[51.50266,-0.11282]],[[51.50266,-0.11282],[51.50309,-0.11385],[51.50364,-0.11421],[51.50447,-0.11398],[51.50501,-0.11314]],[[51.50501,-0.11314],[51.50657,-0.10907],[51.50801,-0.10846],[51.51013,-0.10558]],[[51.51013,-0.10558],[51.51155,-0.10447]],[[51.5119,-0.09631],[51.51211,-0.10267],[51.51201,-0.10359],[51.51155,-0.10447]],[[51.5119,-0.09631],[51.51196,-0.09579]],[[51.51191,-0.0971],[51.51249,-0.09281],[51.51294,-0.09124]],[[51.51196,-0.09579],[51.51282,-0.09117]]]}]
+ }
+}
+</script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+
+(function () {
+  "use strict";
+  if (!window.L) {
+    document.getElementById("map").textContent = "Map could not load (Leaflet unavailable).";
+    return;
+  }
+  var data = JSON.parse(document.getElementById("trip-data").textContent);
+  var style = getComputedStyle(document.documentElement);
+  function cssVar(name, fallback) { return style.getPropertyValue(name).trim() || fallback; }
+  // Map features use a fixed tile-safe palette (see MARKER_COLOURS), not the theme.
+  var C = {
+    outline: cssVar("--mk-outline", "#fff"),
+    ours: cssVar("--mk-ours", "#C62828"),
+    popular: cssVar("--mk-popular", "#1565C0"),
+    event: cssVar("--mk-event", "#00695C"),
+    stay: cssVar("--mk-stay", "#7B1FA2"),
+    stayEdge: cssVar("--mk-stay-edge", "#2A0A3A"),
+    airport: cssVar("--mk-airport", "#EF6C00")
+  };
+  var MAX_APPROX_ZOOM = data.maxApproxZoom || 14;
+
+  var map = L.map("map", { scrollWheelZoom: false })
+    .setView([data.trip.center.lat, data.trip.center.lon], data.trip.zoom);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  }).addTo(map);
+  map.on("focus", function () { map.scrollWheelZoom.enable(); });
+  map.on("blur", function () { map.scrollWheelZoom.disable(); });
+
+  function el(tag, text, cls) {
+    var n = document.createElement(tag);
+    if (text != null) n.textContent = text;
+    if (cls) n.className = cls;
+    return n;
+  }
+  function isHttp(u) { return typeof u === "string" && /^https?:\/\//i.test(u); }
+  function link(href, text) {
+    var a = el("a", text);
+    a.href = href; a.target = "_blank"; a.rel = "noopener noreferrer";
+    return a;
+  }
+  function gmaps(lat, lon) {
+    return "https://www.google.com/maps/search/?api=1&query=" + lat + "," + lon;
+  }
+  // Category display names come from the page data (build.CATEGORY_LABELS), so the
+  // popup and the side panel can't drift apart.
+  var CAT_LABELS = data.catLabels || {};
+  function pretty(cat) {
+    var key = String(cat || "").toLowerCase();
+    if (CAT_LABELS[key]) return CAT_LABELS[key];
+    var s = String(cat || "").replace(/[_-]/g, " ");
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  function placePopup(p) {
+    var box = el("div", null, "popup");
+    if (p.approx) {
+      box.appendChild(el("strong", p.label || "Private place"));
+      box.appendChild(el("p", "Approximate area (about " + p.radius + " m).", "cat-label"));
+      return box;
+    }
+    box.appendChild(el("strong", p.name));
+    box.appendChild(el("span", pretty(p.category) + (p.group === "ours" ? " · our place" : ""), "cat-label"));
+    if (p.address) box.appendChild(el("p", p.address));
+    if (p.notes) box.appendChild(el("p", p.notes));
+    var links = el("p");
+    if (isHttp(p.url)) {
+      links.appendChild(link(p.url, "Website"));
+      links.appendChild(document.createTextNode(" · "));
+    }
+    links.appendChild(link(gmaps(p.lat, p.lon), "Open in Google Maps"));
+    box.appendChild(links);
+    return box;
+  }
+
+  var layers = {};   // place id -> Leaflet layer
+  var placeById = {};
+  data.places.forEach(function (p) {
+    placeById[p.id] = p;
+    var layer;
+    if (p.approx) {
+      layer = L.circle([p.lat, p.lon], {
+        radius: p.radius, color: C.stayEdge, weight: 2.5, dashArray: "6 5",
+        fillColor: C.stay, fillOpacity: 0.22
+      });
+    } else if (p.group === "ours") {
+      layer = L.circleMarker([p.lat, p.lon], {
+        radius: 10, color: C.outline, weight: 3, fillColor: C.ours, fillOpacity: 1
+      });
+    } else {
+      layer = L.circleMarker([p.lat, p.lon], {
+        radius: 7, color: C.outline, weight: 2, fillColor: C.popular, fillOpacity: 0.95
+      });
+    }
+    layer.bindPopup(placePopup(p));
+    layers[p.id] = layer;
+    if (p.group === "ours" || p.default_on) layer.addTo(map);
+  });
+
+  // Popular-place checkboxes: one per place, plus one per category.
+  var placeBoxes = Array.prototype.slice.call(document.querySelectorAll(".toggle-place"));
+  var catBoxes = Array.prototype.slice.call(document.querySelectorAll(".toggle-cat"));
+  function syncCategory(cat) {
+    var boxes = placeBoxes.filter(function (b) { return b.dataset.category === cat; });
+    var on = boxes.filter(function (b) { return b.checked; }).length;
+    catBoxes.forEach(function (cb) {
+      if (cb.dataset.category !== cat) return;
+      cb.checked = on === boxes.length;
+      cb.indeterminate = on > 0 && on < boxes.length;
+    });
+  }
+  function setPlace(box, on) {
+    box.checked = on;
+    var layer = layers[box.dataset.id];
+    if (!layer) return;
+    if (on) layer.addTo(map); else map.removeLayer(layer);
+  }
+  placeBoxes.forEach(function (box) {
+    box.addEventListener("change", function () {
+      setPlace(box, box.checked);
+      syncCategory(box.dataset.category);
+    });
+  });
+  catBoxes.forEach(function (cb) {
+    cb.addEventListener("change", function () {
+      placeBoxes.forEach(function (b) { if (b.dataset.category === cb.dataset.category) setPlace(b, cb.checked); });
+      syncCategory(cb.dataset.category);
+    });
+    syncCategory(cb.dataset.category);
+  });
+
+  function showMap() {
+    var box = document.getElementById("map").getBoundingClientRect();
+    if (box.top < 0 || box.bottom > window.innerHeight) {
+      document.getElementById("map").scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }
+  function focusLayer(layer, approx) {
+    var target = layer.getLatLng();
+    // Never zoom in far on an approximate area: its centre is deliberately not the stay.
+    var zoom = approx ? MAX_APPROX_ZOOM : Math.max(map.getZoom(), 15);
+    map.setView(target, zoom);
+    layer.openPopup();
+    showMap();
+  }
+  function eventHeader(ev) {
+    var box = el("div");
+    box.appendChild(el("strong", ev.name));
+    box.appendChild(el("span", (ev.kind === "plan" ? "Our plan" : "City event") + " · " + ev.day +
+      " · " + (ev.time || "All day"), "cat-label"));
+    // url = the thing itself ("Website"); source = where the info came from ("Source").
+    var links = el("p");
+    if (isHttp(ev.url)) links.appendChild(link(ev.url, "Website"));
+    if (isHttp(ev.source)) {
+      if (links.childNodes.length) links.appendChild(document.createTextNode(" · "));
+      links.appendChild(link(ev.source, "Source"));
+    }
+    if (links.childNodes.length) box.appendChild(links);
+    return box;
+  }
+  function focusPlace(id, ev) {
+    var layer = layers[id], p = placeById[id];
+    if (!layer) return;
+    if (!map.hasLayer(layer)) {
+      var box = placeBoxes.filter(function (b) { return b.dataset.id === id; })[0];
+      if (box) { setPlace(box, true); syncCategory(box.dataset.category); } else layer.addTo(map);
+    }
+    if (ev) {
+      // Event + place in one popup; the plain place popup comes back when it closes.
+      var combo = el("div", null, "popup");
+      combo.appendChild(eventHeader(ev));
+      combo.appendChild(el("hr"));
+      combo.appendChild(placePopup(p));
+      layer.setPopupContent(combo);
+      layer.once("popupclose", function () { layer.setPopupContent(placePopup(p)); });
+    }
+    focusLayer(layer, !!p.approx);
+  }
+
+  // One shared marker for events with their own {lat, lon}: moved, never stacked.
+  var eventMarker = null;
+  function focusEvent(i) {
+    var ev = data.events[i];
+    if (!ev || !ev.loc) return;
+    if (ev.loc.ref) { focusPlace(ev.loc.ref, ev); return; }
+    var ll = [ev.loc.lat, ev.loc.lon];
+    if (!eventMarker) {
+      eventMarker = L.circleMarker(ll, {
+        radius: 8, color: C.outline, weight: 3, fillColor: C.event, fillOpacity: 1
+      }).bindPopup("");
+    }
+    var box = el("div", null, "popup");
+    box.appendChild(eventHeader(ev));
+    if (ev.loc.label) box.appendChild(el("p", ev.loc.label));
+    var links = el("p");
+    links.appendChild(link(gmaps(ev.loc.lat, ev.loc.lon), "Open in Google Maps"));
+    box.appendChild(links);
+    eventMarker.closePopup();
+    eventMarker.setLatLng(ll).setPopupContent(box);
+    if (!map.hasLayer(eventMarker)) eventMarker.addTo(map);
+    focusLayer(eventMarker, false);
+  }
+
+  // --- Airports ------------------------------------------------------------
+  // Reference points, never places: their own list in the page data, their own marker
+  // shape (an amber disc with a white plane, not a circle), their own checkbox, and no
+  // part in the category toggles, the privacy rules or the initial view.
+  var PLANE_SVG = '<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">' +
+    '<circle cx="12" cy="12" r="10.5" fill="' + C.airport + '" stroke="' + C.outline +
+    '" stroke-width="2"/><g transform="translate(12 12) scale(.58) translate(-12 -12)">' +
+    '<path fill="' + C.outline + '" d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 ' +
+    '3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/></g></svg>';
+  var airIcon = L.divIcon({ className: "mk-air", html: PLANE_SVG, iconSize: [26, 26],
+                            iconAnchor: [13, 13], popupAnchor: [0, -13] });
+  function airportPopup(a) {
+    var box = el("div", null, "popup");
+    box.appendChild(el("strong", a.name || a.code));
+    box.appendChild(el("span", "Airport · " + a.code, "cat-label"));
+    var links = el("p");
+    links.appendChild(link(gmaps(a.lat, a.lon), "Open in Google Maps"));
+    box.appendChild(links);
+    return box;
+  }
+  var airports = data.airports || [];
+  var airportLayers = [];
+  var airportGroup = L.layerGroup();
+  var airBox = document.getElementById("toggle-airport");
+  airports.forEach(function (a) {
+    var m = L.marker([a.lat, a.lon], { icon: airIcon, alt: "Airport " + a.code,
+                                       title: a.code + " — " + (a.name || "") });
+    m.bindPopup(airportPopup(a));
+    airportLayers.push(m);
+    airportGroup.addLayer(m);
+  });
+  if (airports.length) {
+    if (!airBox || airBox.checked) airportGroup.addTo(map);   // on by default
+    if (airBox) airBox.addEventListener("change", function () {
+      if (airBox.checked) airportGroup.addTo(map); else map.removeLayer(airportGroup);
+    });
+  }
+  function focusAirport(i) {
+    var m = airportLayers[i];
+    if (!m) return;
+    if (!map.hasLayer(airportGroup)) {
+      if (airBox) airBox.checked = true;
+      airportGroup.addTo(map);
+    }
+    // animate:false on purpose. The airport is usually far outside the current view, and
+    // an animated pan is cut short by the popup's own auto-pan (openPopup nudges the map
+    // relative to wherever the animation has got to), leaving the map stranded part-way.
+    map.setView(m.getLatLng(), Math.max(map.getZoom(), 12), { animate: false });
+    m.openPopup();
+    showMap();
+  }
+
+  // --- Metro lines ---------------------------------------------------------
+  // One checkbox for the whole network. The lines go in their own pane below the
+  // overlay pane, so they never draw over a pin or swallow a click.
+  var metro = data.metro || null;
+  var metroGroup = null, metroDrawn = false, metroPending = false;
+  var metroBox = document.getElementById("toggle-metro");
+  if (metro) {
+    map.createPane("metro");
+    map.getPane("metro").style.zIndex = 380;
+    metroGroup = L.layerGroup();
+  }
+  function drawMetro(lines) {
+    (lines || []).forEach(function (ln) {
+      (ln.segs || []).forEach(function (seg) {
+        L.polyline(seg, { color: ln.colour, weight: 3, opacity: 0.85, interactive: false,
+                          pane: "metro", smoothFactor: 1.5 }).addTo(metroGroup);
+      });
+    });
+    metroDrawn = true;
+  }
+  function showMetro(on) {
+    if (!metroGroup) return;
+    if (!on) { map.removeLayer(metroGroup); return; }
+    if (!metroDrawn && metro.lines) drawMetro(metro.lines);
+    if (metroDrawn) { metroGroup.addTo(map); return; }
+    if (metroPending || !metro.url) return;
+    metroPending = true;   // sibling metro.json: fetched the first time it is switched on
+    fetch(metro.url, { credentials: "same-origin" })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (j) {
+        drawMetro(j.lines);
+        if (!metroBox || metroBox.checked) metroGroup.addTo(map);
+      })
+      .catch(function (err) { console.warn("metro lines not loaded:", err.message); })
+      .then(function () { metroPending = false; });
+  }
+  if (metro && metroBox) {
+    metroBox.addEventListener("change", function () { showMetro(metroBox.checked); });
+    if (metroBox.checked) showMetro(true);
+  }
+
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest) return;
+    // The '↗' links in the side lists open normally: never pan the map, never toggle a
+    // checkbox (they also sit outside the <label>, so label activation can't fire either).
+    if (e.target.closest("a[href]")) return;
+    var t = e.target.closest(".event-go, .focus-place, .focus-airport");
+    if (!t) return;
+    if (t.classList.contains("event-go")) focusEvent(Number(t.dataset.event));
+    else if (t.classList.contains("focus-airport")) focusAirport(Number(t.dataset.air));
+    else focusPlace(t.dataset.id);
+  });
+
+  // Places and airports (event markers excluded); an approximate area counts as its whole
+  // circle. Metro lines are deliberately left out: a 30 km network would zoom the trip away.
+  document.getElementById("fit-all").addEventListener("click", function () {
+    var bounds = null;
+    Object.keys(layers).forEach(function (id) {
+      var l = layers[id];
+      if (!map.hasLayer(l)) return;
+      var b = placeById[id].approx ? l.getBounds() : L.latLngBounds([l.getLatLng()]);
+      bounds = bounds ? bounds.extend(b) : b;
+    });
+    if (map.hasLayer(airportGroup)) {
+      airportLayers.forEach(function (m) {
+        var b = L.latLngBounds([m.getLatLng()]);
+        bounds = bounds ? bounds.extend(b) : b;
+      });
+    }
+    if (bounds) map.fitBounds(bounds, { padding: [30, 30], maxZoom: MAX_APPROX_ZOOM });
+  });
+})();
+
+</script>
+</body>
+</html>
