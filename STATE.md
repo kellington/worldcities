@@ -26,7 +26,7 @@ measured reason for the block was gone (see DECISIONS.md, 2026-09-22). The re-te
   login passed** (Chrome, `rob.kellington@gmail.com`).
 - **Gate 4 — Access app** `trip mexico-city-2026-6b9638`, destination
   `worldcities.ca/mexico-city-2026-6b9638`, policy `trip-mates` (Allow; two separate email
-  entries `rob.kellington@gmail.com`, `lucie.beauchamp2020@gmail.com`, read back from the
+  entries `rob.kellington@gmail.com`, `Lucie's Gmail (project/secrets/access-allowlist.txt)`, read back from the
   saved policy JSON), login method required = One-time PIN, session `730h`. All five verify
   paths (incl. uppercase) → 302 to the Access login.
 - **Gate 3 — custom domain.** Apex = proxied CNAME `worldcities.ca → worldcities.pages.dev`

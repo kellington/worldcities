@@ -68,7 +68,7 @@ possibly on a dead SIM in Mexico City.
 **Trade-off:** A longer cookie life if a device is lost. Acceptable for a page showing a
 hotel and a list of restaurants.
 **Impact:** Gate 4 allowlists `rob.kellington@gmail.com` and
-`lucie.beauchamp2020@gmail.com`. Rob's own address must stay on it or he locks himself out.
+`Lucie's Gmail (project/secrets/access-allowlist.txt)`. Rob's own address must stay on it or he locks himself out.
 
 ## [2026-09-21] — Accept Zero Trust Free's $0 billing activation
 
