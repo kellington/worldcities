@@ -17,12 +17,15 @@ See README.md for usage instructions. This is a Python-based tool — run it loc
 
 ## Working in this repo
 
-**As of 2026-09-21 the trip-site half is under active work — a live deploy in progress.**
+**As of 2026-09-22 the first trip (Mexico City) is live on worldcities.ca.**
 Start by reading, in this order:
 
 1. **`STATE.md`** — where things actually are. If it's stale, everything downstream is wrong.
 2. **`TASKS.md`** — what's next. **Now** is the blocking item.
-3. **`tripsite/README.md`, Deploy section** — the authoritative gate cards for the deploy.
+3. **`tripsite/README.md` › "Deploy to Cloudflare Pages with Access"** — the generic deploy
+   guide (placeholders). worldcities-specific values live only in the rules below. The
+   historical AWS→Cloudflare cutover gate cards were removed 2026-09-22; they're in git
+   history (last present at commit `5a14908`).
    Rob runs every dashboard, `wrangler` and DNS step himself; verify each one before moving on.
 4. `PLAN.md` / `PROJECT.md` / `DECISIONS.md` for milestone, scope and why things are as they are.
 
@@ -38,14 +41,18 @@ minimal change, no ceremony needed.
   `vscode`, and without the flag wrangler makes a *preview* deploy.
 - **Every `aws route53` command needs `--profile rob`**, or it returns `InvalidClientTokenId`.
 - **Every Pages upload replaces the whole site.** Rebuild all live trips in one run first.
-- **No trip page goes up before its Access app exists** (Gate 4 before Gate 5).
+- **No trip page goes up before its Access app exists**, and the app is only proven by a
+  **302** to `worldcities-trips.cloudflareaccess.com` — before upload a 404 proves nothing.
 - **Zone in scope is `Z0944732VRZ4NUBNE0FL`.** Never touch `Z08901851VA0TTXNMTFCZ`
   (orphaned `skyideas.com` zone, different domain).
-- **`worldcities.ca` carries live email** at `rob@worldcities.ca`. Mail is what DNS work
-  protects; the website in the blast radius is a placeholder being dropped on purpose.
+- **`worldcities.ca` carries live email** at `rob@worldcities.ca`. Any DNS change: diff the
+  three Zoho MX before/after.
+- **Never deploy `examples/site/`** — it's a full site of its own and would replace the live one.
+- **Trip-mate emails never go in tracked files** (public repo) — allowlist is in
+  `project/secrets/access-allowlist.txt`.
 - **A gate's pass criterion that is a literal string match is suspect.** Running the gates
-  found five defects, two of which would have produced a false verdict whose documented
-  reaction was a rollback. See DECISIONS.md, 2026-09-21.
+  found six defects, several of which would have produced a false verdict. See DECISIONS.md,
+  2026-09-21 and 2026-09-22.
 
 ## Notes
 

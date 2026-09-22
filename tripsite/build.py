@@ -2340,9 +2340,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"         {out_dir / name}")
     if stale:
         print(f"removed: stale trip folder(s) not in this run: {', '.join(stale)}")
-    print(f"\ndist now holds {len(slugs_in(out_dir))} trip(s): {', '.join(slugs_in(out_dir))}")
-    print("  Each needs its own Access app before upload (README, Gate 4). An upload replaces the "
-          "whole site, so any live trip not built in this run would be taken down.")
+    held = slugs_in(out_dir)
+    if out_dir == DEFAULT_OUT.resolve():  # the deploy folder: say what an upload would do
+        print(f"\ndist now holds {len(held)} trip(s): {', '.join(held)}")
+        print("  Each needs its own Access app before upload (tripsite/README.md, Deploy). An upload replaces the "
+              "whole site, so any live trip not built in this run would be taken down.")
+    else:
+        print(f"\n{out_dir} now holds {len(held)} trip(s): {', '.join(held)}")
     print("\npreview (file:// may not load OSM tiles because it sends no Referer):")
     print(f"  python -m http.server -d {out_dir}")
     for slug in sorted(pages):

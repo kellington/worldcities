@@ -36,8 +36,11 @@ measured reason for the block was gone (see DECISIONS.md, 2026-09-22). The re-te
   Export: `project/secrets/cf-zone-2026-09-22.txt`.
 - **Resolvers** — as of 15:45, `1.1.1.1`, `8.8.8.8`, `9.9.9.9`, OpenDNS and Rob's ISP
   resolver all on the Cloudflare delegation. The split-resolver window is closed.
+- **Public example** — fictional London demo, `examples/london-demo.md` built to
+  `examples/site/` (never deploy that folder — it would replace the live site). README now
+  covers trip sites; its dist/-writing command is labelled as replacing dist/. 165 tests.
 - **Earlier and unchanged:** Gates 0a–0d, 1, 2, 3b; Zero Trust team `worldcities-trips`;
-  DNS backups in `~/Backups/worldcities-dns/`; `tripsite/` 164 tests.
+  DNS backups in `~/Backups/worldcities-dns/`; `tripsite/` tests (165 as of the London demo work).
 
 ## In progress
 
@@ -51,13 +54,9 @@ measured reason for the block was gone (see DECISIONS.md, 2026-09-22). The re-te
 
 ## Known issues
 
-- **Gate 4's verify accepts a 404 as a pass — which is a false pass before Gate 5.** With the
-  trip not yet uploaded, the slug 404s whether or not Access is attached. On 2026-09-22 the
-  five curls returned 404 for 2+ minutes after the app was saved; the 302s appeared only after
-  Rob reopened the app. Card not yet amended — see TASKS.
-- **Gate 3's card still says "Earliest 19:10 / 24-hour re-test PASSED"** as a precondition,
-  and Gates 4/5 inherit it. Now historical for this trip; amend when the cards are next touched.
-- **`www.worldcities.ca` is dark** until Gate 0f. Must never CNAME to the Pages project —
+- **Defect 6 (Gate 4 accepted a 404 pre-upload)** — fixed in the new generic deploy guide
+  (302-only before upload) and in CLAUDE.md's rules.
+- **`www.worldcities.ca` is dark** until the `www` decision. Must never CNAME to the Pages project —
   Access covers `worldcities.ca` only.
 - **"Enable access policy" is still absent** from Pages › Settings after Zero Trust
   onboarding. Hypothesis ruled out; Gate 3b's redirect covers those hostnames regardless.
@@ -79,11 +78,14 @@ zone in scope:  Z0944732VRZ4NUBNE0FL  (worldcities.ca)
 NEVER touch:    Z08901851VA0TTXNMTFCZ  (skyideas.com, orphan)
 ```
 
-Working-copy runbook (Session B/C): https://claude.ai/artifact/Cs5TrB4frM2o6FSjh7Zvy2 —
-`tripsite/README.md` stays authoritative.
+Deploy docs: `tripsite/README.md` › "Deploy to Cloudflare Pages with Access" (generic);
+worldcities-specific rules in CLAUDE.md. The cutover gate cards were removed 2026-09-22
+(git history, commit `5a14908`); the Session B/C working-copy runbook artifact is retired.
 
 ## Open questions
 
+- **PLAN.md is stale on docs** — lines 25 and 44 reference the removed gate cards
+  (0a–0g, 1–6, Gate 6). Fix in the milestone-close rewrite.
 - **PLAN.md milestone ("First live trip site") is effectively met** — remaining: the 0e
   re-test and Lucie's first login. Close the milestone and rewrite PLAN.md once both pass.
 - **Can a self-hosted Access app take a `*.pages.dev` hostname?** Deferred until after
