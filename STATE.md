@@ -1,6 +1,6 @@
 # State
 
-*Last updated: 2026-09-22 16:30 MDT*
+*Last updated: 2026-09-22 19:50 MDT*
 
 ## Summary
 
@@ -10,9 +10,8 @@ with map tiles. Every other hostname — `worldcities.pages.dev`, both deploymen
 301s to `worldcities.ca`, where Access applies. The root serves the neutral placeholder.
 Mail on `rob@worldcities.ca` is untouched by any of it (MX diff clean).
 
-Gates 3, 4 and 5 ran **ahead of** the Gate 0e 24-hour mail re-test, on Rob's call — the
-measured reason for the block was gone (see DECISIONS.md, 2026-09-22). The re-test itself
-**is still owed**: earliest 2026-09-22 19:10 MDT. It is now a confirmation, not a blocker.
+Gates 3, 4 and 5 ran **ahead of** the Gate 0e 24-hour mail re-test, on Rob's call (see
+DECISIONS.md, 2026-09-22). The re-test **passed** at 19:28 MDT (Quincy-verified).
 
 ## What's working
 
@@ -34,6 +33,11 @@ measured reason for the block was gone (see DECISIONS.md, 2026-09-22). The re-te
   `172.67.138.210`. Curls: 200, "World Cities" ×2, "Amazon S3" 0, `AmazonS3` header 0.
   MX before/after diff empty, 3 and 3 lines; three Zoho MX from `1.1.1.1` and `8.8.8.8`.
   Export: `project/secrets/cf-zone-2026-09-22.txt`.
+- **Gate 0e 24-hour re-test — PASS** (Quincy, 19:40). Gmail → `rob@worldcities.ca` sent
+  19:28:29 MDT (24h19m after the flip): 2 `Received:` hops, `mail-oi2-f43.google.com` →
+  `mx.zohomail.com` direct; SPF/DKIM/DMARC pass (gmail.com side). Evidence
+  filed in `project/secrets/`: `gate0e-24h-retest-2026-09-22.eml`, `gate0e-postflip-2026-09-21.eml`
+  (pre-flip baseline was overwritten; survives only in git history).
 - **Resolvers** — as of 15:45, `1.1.1.1`, `8.8.8.8`, `9.9.9.9`, OpenDNS and Rob's ISP
   resolver all on the Cloudflare delegation. The split-resolver window is closed.
 - **Public example** — fictional London demo, `examples/london-demo.md` built to
@@ -44,10 +48,6 @@ measured reason for the block was gone (see DECISIONS.md, 2026-09-22). The re-te
 
 ## In progress
 
-- **Gate 0e 24-hour re-test** — earliest **2026-09-22 19:10 MDT**. Gmail →
-  `rob@worldcities.ca`, save "Show original" `.eml` to a *new* filename, then:
-  `grep -ic '^Received:'` → 2 · a Zoho host (`mx*.zoho.com` or `mx*.zohomail.com`) · no hop
-  between Gmail and Zoho. Low risk (Route 53 still serves identical MX), but required.
 - **Lucie's link** — message drafted by Pearl (two-text version), copied by Rob. **Not yet
   confirmed sent, and Lucie has not yet logged in.** Her login is the only proof her
   allowlist entry has no typo.
@@ -86,8 +86,8 @@ worldcities-specific rules in CLAUDE.md. The cutover gate cards were removed 202
 
 - **PLAN.md is stale on docs** — lines 25 and 44 reference the removed gate cards
   (0a–0g, 1–6, Gate 6). Fix in the milestone-close rewrite.
-- **PLAN.md milestone ("First live trip site") is effectively met** — remaining: the 0e
-  re-test and Lucie's first login. Close the milestone and rewrite PLAN.md once both pass.
+- **PLAN.md milestone ("First live trip site") is effectively met** — remaining: Lucie's
+  first login (0e re-test passed). Close the milestone and rewrite PLAN.md once she's in.
 - **Can a self-hosted Access app take a `*.pages.dev` hostname?** Deferred until after
   Gate 5 — which has now passed, so it is revisitable. Low priority; 3b covers it.
 - **When to delete the Route 53 hosted zone** (Gate 0g) — not before ~2026-10-05 (two weeks
@@ -99,6 +99,10 @@ worldcities-specific rules in CLAUDE.md. The cutover gate cards were removed 202
 - Whether the 24-hour re-test must block Gates 3–5 — no, once every resolver measurably
   switched (DECISIONS.md, 2026-09-22).
 - Whether "Enable access policy" appears after Zero Trust onboarding — it does not.
+- Deploy docs → generic guide in `tripsite/README.md`; cutover gate cards removed, Defect 6
+  fix built in (302-only before upload). Gage's Gate 4 amend is therefore moot.
+- Public fictional London demo added under `examples/` (165 tests).
+- Gate 0e 24-hour re-test — **passed** (19:28 MDT); evidence filed in `project/secrets/`.
 
 ---
 
