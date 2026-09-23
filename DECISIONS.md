@@ -165,3 +165,25 @@ the card literally would have run Gate 5 and published the trip with no login. S
 defect 5 (a check satisfied by a broken state).
 **Impact:** Card amendment routed to Gage (TASKS, Next). General rule: a verify that also
 passes when the feature is absent is not a verify.
+
+## [2026-09-22] — Deploy guide goes generic; cutover gate cards removed
+
+**Decision:** `tripsite/README.md` rewritten as a generic "Deploy to Cloudflare Pages with
+Access" guide with placeholders (2,503 → 489 lines). The worldcities AWS→Cloudflare cutover
+gate cards (0a–0g, 1–6) were deleted; worldcities-specific values and rules live only in
+CLAUDE.md.
+**Why:** The cutover is done; the cards were a one-time runbook, and a public repo's README
+should serve anyone deploying a trip. Defect 6's lesson (302-only Access verify before
+upload) is built into the new guide rather than patched onto an old card.
+**Trade-off:** Gate 0g (Route 53 zone deletion, ~2026-10-05) loses its live card — recover
+it with `git show 5a14908:tripsite/README.md` (lines 1614–1649).
+**Impact:** Supersedes the "amend Gate 4 via Gage" follow-up in the Defect 6 entry.
+
+## [2026-09-22] — Public fictional demo in examples/
+
+**Decision:** Ship a fictional London trip (`examples/london-demo.md`) and its built site
+(`examples/site/`) in the repo, since real trips stay gitignored.
+**Why:** Without it, the public repo shows no working trip site.
+**Trade-off:** `examples/site/` can drift from `build.py` (no test catches it), and it must
+never be deployed — a Pages upload would replace the live site.
+**Impact:** Rule added to CLAUDE.md; rebuild task in TASKS Later.

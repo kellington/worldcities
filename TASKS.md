@@ -5,10 +5,6 @@
 
 ## Now
 
-- [ ] **Gate 0e 24-hour mail re-test** — earliest **2026-09-22 19:10 MDT**. Gmail →
-      `rob@worldcities.ca`, save the `.eml` under a new filename, then:
-      `grep -ic '^Received:'` → 2 · a Zoho host · no hop between Gmail and Zoho.
-      Confirmation only now — the site is already live.
 - [ ] **Send Lucie the link and confirm she logs in.** Pearl's two-text draft is in Rob's
       clipboard / diary. Her successful login is the only proof her allowlist entry is right.
 
@@ -18,7 +14,7 @@
       targets. Never done on hardware, and the page will be used on phones in Mexico City.
 - [ ] **Decide `www`** (was Gate 0f). Recommendation: redirect to apex. Never CNAME it to the
       Pages project.
-- [ ] **Close the milestone** once 0e re-test and Lucie's login pass — rewrite PLAN.md.
+- [ ] **Close the milestone** once Lucie's login passes — rewrite PLAN.md.
 
 ## Later
 
@@ -46,6 +42,7 @@
 
 ## Done (recent)
 
+- [x] **Gate 0e 24-hour re-test PASS** — 19:28 MDT, 2 hops Gmail → Zoho, Quincy-verified (2026-09-22)
 - [x] `tripsite/README.md` rewritten generic (2,503 → 489 lines); cutover gate cards removed,
       302-only Access verify built into the new guide (2026-09-22)
 - [x] Public London demo (`examples/london-demo.md` → `examples/site/`) + README covers trip
