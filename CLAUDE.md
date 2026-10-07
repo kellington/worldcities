@@ -47,6 +47,11 @@ minimal change, no ceremony needed.
   (orphaned `skyideas.com` zone, different domain).
 - **`worldcities.ca` carries live email** at `rob@worldcities.ca`. Any DNS change: diff the
   three Zoho MX before/after.
+- **The zone has a second tenant: `https://retired-world.worldcities.ca`** — a Cloudflare
+  Workers custom domain owned by the `Rob/retired-world` repo (live 2026-10-07 UTC). It's outside
+  the worldcities Access app (which covers `worldcities.ca/<slug>` paths only) and outside the
+  Pages project. Never delete, overwrite or wildcard over its record; after any DNS change,
+  check `curl -sI https://retired-world.worldcities.ca/` still returns 200.
 - **Never deploy `examples/site/`** — it's a full site of its own and would replace the live one.
 - **Trip-mate emails never go in tracked files** (public repo) — allowlist is in
   `project/secrets/access-allowlist.txt`.
