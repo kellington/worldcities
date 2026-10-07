@@ -1,6 +1,6 @@
 # State
 
-*Last updated: 2026-09-22 19:50 MDT*
+*Last updated: 2026-10-06 (docs/status session; no deploy or DNS work)*
 
 ## Summary
 
@@ -61,6 +61,9 @@ DECISIONS.md, 2026-09-22). The re-test **passed** at 19:28 MDT (Quincy-verified)
 - **"Enable access policy" is still absent** from Pages › Settings after Zero Trust
   onboarding. Hypothesis ruled out; Gate 3b's redirect covers those hostnames regardless.
 - **No SPF/DKIM/DMARC on `worldcities.ca`** — pre-existing, out of scope.
+- **Zone shared with `retired-world.worldcities.ca`** (since 2026-10-07 UTC) — Workers custom
+  domain owned by the `Rob/retired-world` repo; not part of the Pages project or the Access app.
+  Any DNS change here (incl. the `www` decision, Gate 0g) must leave its record alone.
 - **Orphaned Route 53 zone `skyideas.com`** (`Z08901851VA0TTXNMTFCZ`) — do not touch while
   working in Route 53.
 - **Untested on real phone hardware** — map drag vs page scroll, small ↗ link targets.
@@ -75,6 +78,7 @@ wrangler: unpinned via npx; 4.136.3 today. Git-dirty warning is harmless
 live deploy: b36c4fc1   (previous: 2ca4e8dc, placeholder only)
 Access app:  trip mexico-city-2026-6b9638  · team worldcities-trips
 zone in scope:  Z0944732VRZ4NUBNE0FL  (worldcities.ca)
+also on zone:   retired-world.worldcities.ca  (Worker custom domain, Rob/retired-world repo; don't touch)
 NEVER touch:    Z08901851VA0TTXNMTFCZ  (skyideas.com, orphan)
 ```
 
@@ -90,10 +94,17 @@ worldcities-specific rules in CLAUDE.md. The cutover gate cards were removed 202
   first login (0e re-test passed). Close the milestone and rewrite PLAN.md once she's in.
 - **Can a self-hosted Access app take a `*.pages.dev` hostname?** Deferred until after
   Gate 5 — which has now passed, so it is revisitable. Low priority; 3b covers it.
-- **When to delete the Route 53 hosted zone** (Gate 0g) — not before ~2026-10-05 (two weeks
-  of stable mail on Cloudflare). It is the rollback.
+- **When to delete the Route 53 hosted zone** (Gate 0g) — eligible since ~2026-10-05 (two weeks
+  of stable mail on Cloudflare). It is the rollback; Rob's call (questions_for_rob).
+- **Lucie's login** — still unconfirmed as of 2026-10-06. Trip freeze starts 2026-10-23.
 
-## Resolved this session
+## Resolved this session (2026-10-06)
+
+- Docs note `retired-world.worldcities.ca` shares the zone (CLAUDE.md rule, PROJECT, STATE, TASKS).
+- First global `/project-status` run: `project/status/status-2026-10-06.html` + STATUS-SUMMARY
+  (priority 19 per README).
+
+## Resolved 2026-09-22
 
 - `hotel_display` → **`exact`** (Rob, 2026-09-22).
 - Whether the 24-hour re-test must block Gates 3–5 — no, once every resolver measurably

@@ -47,6 +47,11 @@ minimal change, no ceremony needed.
   (orphaned `skyideas.com` zone, different domain).
 - **`worldcities.ca` carries live email** at `rob@worldcities.ca`. Any DNS change: diff the
   three Zoho MX before/after.
+- **The zone has a second tenant: `https://retired-world.worldcities.ca`** — a Cloudflare
+  Workers custom domain owned by the `Rob/retired-world` repo (live 2026-10-07 UTC). It's outside
+  the worldcities Access app (which covers `worldcities.ca/<slug>` paths only) and outside the
+  Pages project. Never delete, overwrite or wildcard over its record; after any DNS change,
+  check `curl -sI https://retired-world.worldcities.ca/` still returns 200.
 - **Never deploy `examples/site/`** — it's a full site of its own and would replace the live one.
 - **Trip-mate emails never go in tracked files** (public repo) — allowlist is in
   `project/secrets/access-allowlist.txt`.
@@ -60,3 +65,46 @@ minimal change, no ceremony needed.
 - No standardization with other SKYideas/Rob projects required
 - Commits are infrequent
 - The repo is **public**: `trips/` and `project/secrets/` are gitignored and must stay so
+
+## Project status
+
+Config for the global `/project-status` skill (`~/.claude/skills/project-status/`).
+Metadata (group, profile, priority) comes from the workspace README table.
+
+```yaml
+extra_sources:
+  - README.md
+  - AGENTS.md
+palette: { primary: "#1e293b", accent: "#0d9488" }
+custom_sections: |
+  - Two tools: poster CLI (fork of originalankur/maptoposter) and tripsite/ static trip sites (worldcities.ca); report each.
+  - Poster quick reference + theme list from `ls themes/`; generated output = `ls posters/` count only.
+  - Automation vision (AGENTS.md) vs what exists (`ls scripts/`) as two columns.
+```
+
+## Project Reference
+
+**Posters** (full usage in README.md; themes: `ls themes/` or `--list-themes`):
+
+```bash
+uv run ./create_map_poster.py --city "Edmonton" --country "Canada"                     # default theme
+uv run ./create_map_poster.py --city "Paris" --country "France" --theme noir --distance 10000
+uv run ./create_map_poster.py --city "Tokyo" --country "Japan" --all-themes            # every theme
+uv run ./create_map_poster.py --list-themes
+uv run ./create_map_poster.py --city "Venice" --country "Italy" --theme blueprint -W 8.3 -H 11.7   # A4
+uv run ./create_map_poster.py --city "Stanley Park" --country "Canada" -lat 49.3043 -long -123.1443 --theme forest
+uv run ./create_map_poster.py --city "Tokyo" --country "Japan" --display-city "東京" --display-country "日本" --font-family "Noto Sans JP" --theme japanese_ink
+```
+
+Distance guide (default 18000m): 4000–6000m small/dense cities (Venice, Amsterdam) ·
+8000–12000m medium cities / downtown (Paris, Barcelona) · 15000–20000m large metros (Tokyo, Mumbai).
+
+Poster gotchas:
+- Requires internet — Nominatim (geocoding) and OSMnx (roads) are hit every run; no offline mode.
+- Large `--distance` is slow; use 150 DPI for quick previews.
+- Ambiguous places may geocode wrong — override with `-lat` / `-long`.
+- Nominatim rate limits — add delays when looping `--all-themes` over many cities.
+- `posters/` is gitignored — regenerate when needed.
+
+**Trip sites:** `tripsite/README.md` (build + "Deploy to Cloudflare Pages with Access");
+worldcities-specific deploy rules are in "Deploy-specific rules that bite" above.

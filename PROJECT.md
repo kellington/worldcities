@@ -50,6 +50,8 @@ it should be shareable with the people on the trip without being visible to the 
 - **Privacy is a build-time guarantee, not a convention.** The leak scan is the mechanism.
 - **`worldcities.ca` carries live email** — a Zoho mailbox at `rob@worldcities.ca`. Any DNS
   work on that zone treats mail as the thing being protected.
+- **The zone also serves `https://retired-world.worldcities.ca`** — a separate project
+  (`Rob/retired-world`, Cloudflare Workers). DNS work here must not disturb its record.
 - **Every Pages upload replaces the whole site.** All live trips must be rebuilt in one run
   before any deploy.
 - **Trip dates are a hard freeze window.** No DNS or deploy work between 2026-10-23 and

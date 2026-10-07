@@ -13,7 +13,7 @@
 - [ ] **Test the live page on a real iPhone** — map drag vs page scroll, the small ↗ link
       targets. Never done on hardware, and the page will be used on phones in Mexico City.
 - [ ] **Decide `www`** (was Gate 0f). Recommendation: redirect to apex. Never CNAME it to the
-      Pages project.
+      Pages project. No wildcard — it would shadow `retired-world.worldcities.ca`.
 - [ ] **Close the milestone** once Lucie's login passes — rewrite PLAN.md.
 
 ## Later
@@ -42,6 +42,7 @@
 
 ## Done (recent)
 
+- [x] Docs reference `retired-world.worldcities.ca` (shared zone rule); status page 2026-10-06 (2026-10-06)
 - [x] **Gate 0e 24-hour re-test PASS** — 19:28 MDT, 2 hops Gmail → Zoho, Quincy-verified (2026-09-22)
 - [x] `tripsite/README.md` rewritten generic (2,503 → 489 lines); cutover gate cards removed,
       302-only Access verify built into the new guide (2026-09-22)
