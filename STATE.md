@@ -111,6 +111,8 @@ worldcities-specific rules in CLAUDE.md. The cutover gate cards were removed 202
   record, expiry 2026-12-02 with auto-renew unconfirmed. Committed `2fbaf12`.
 - `/project-status`: `project/status/status-2026-10-17.html` + STATUS-SUMMARY refresh. Committed
   `2fbaf12`; refreshed again in the unattended run to reflect that commit.
+- Second unattended refresh: HANDOFFS.md read — no open handoffs to worldcities. Status page
+  touched (handoff note only); nothing else changed.
 
 ## Resolved 2026-10-06
 
