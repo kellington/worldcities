@@ -60,11 +60,11 @@ footer{max-width:1100px;margin:0 auto;padding:8px 16px 32px;color:var(--mut);fon
 <section><h2>Purpose</h2><p>Personal map-poster generator (fork of originalankur/maptoposter) plus <code>tripsite/</code>, a CLI that turns a private trip profile into a static, invite-only trip website on worldcities.ca.</p><div class="src">Source: PROJECT.md, CLAUDE.md</div></section>
 
 <section><h2>Since last status (2026-10-06)</h2>
-<p><b>No new decisions, no milestone change, no Now-list change, no commits.</b> 11 days dormant.</p>
-<h3>Other (uncommitted, working tree)</h3><ul>
+<p><b>No new decisions, no milestone change, no Now-list change.</b> One docs commit (<code>2fbaf12</code>, 2026-10-17).</p>
+<h3>Other</h3><ul>
 <li>CLAUDE.md: hosting facts added today (H-20261016-11) — pages.dev 301-only, manual uploads, no <code>www</code> record, domain expiry 2026-12-02.</li>
-<li>README.md: "Prototype" link to the live trip URL added at the top (not by this session) — see Risks.</li></ul>
-<div class="src">Source: status-2026-10-06.html, git log, git diff, HANDOFFS.md</div></section>
+<li>README.md: "Prototype" link to the live trip URL at the top — committed by Rob in <code>2fbaf12</code>, so treated as accepted (derived) — see Risks.</li></ul>
+<div class="src">Source: status-2026-10-06.html, git log</div></section>
 
 <section><h2>Current milestone — First live trip site</h2>
 <ul class="chk">
@@ -142,7 +142,7 @@ uv run tripsite/build.py examples/london-demo.md --out examples/site</pre>
 <tr><th>Risk</th><th>Severity</th><th>Next move</th></tr>
 <tr><td>Lucie's allowlist entry unproven; trip freeze starts 2026-10-23 (6 days) and PLAN's 2026-10-16 re-plan line has passed</td><td><span class="dot am"></span>High</td><td>Send link, confirm her login this week — before the freeze</td></tr>
 <tr><td>Page untested on phones — will be used on phones in Mexico City</td><td><span class="dot am"></span>Medium</td><td>iPhone test before 2026-10-23 (TASKS Next)</td></tr>
-<tr><td>Uncommitted README.md edit puts the trip URL (slug) on the public repo's front page; contradicts PROJECT success criterion "nothing reveals a trip slug" (slug is already in tracked docs/history; Access is the real lock)</td><td><span class="dot am"></span>Medium</td><td>Rob: drop the link or accept it explicitly before committing README.md</td></tr>
+<tr><td>README.md (committed <code>2fbaf12</code>) puts the trip URL (slug) on the public repo's front page; contradicts PROJECT success criterion "nothing reveals a trip slug" (slug is already in tracked docs/history; Access is the real lock)</td><td><span class="dot am"></span>Low</td><td>Accepted by commit (derived); reword PROJECT criterion at milestone close</td></tr>
 <tr><td>Domain expiry 2026-12-02, auto-renew unconfirmed — carries live mail</td><td><span class="dot am"></span>Medium</td><td>Rob: check auto-renew at registrar</td></tr>
 <tr><td>DNS work (www, Gate 0g) could disturb live mail or the <code>retired-world</code> record</td><td><span class="dot am"></span>Medium</td><td>MX diff + <code>curl -sI retired-world.worldcities.ca</code> after any change; none during freeze</td></tr>
 <tr><td>PLAN.md stale vs reality</td><td><span class="dot am"></span>Low</td><td>Rewrite at milestone close</td></tr>
@@ -151,10 +151,11 @@ uv run tripsite/build.py examples/london-demo.md --out examples/site</pre>
 
 <section class="full"><h2>Source freshness</h2><table>
 <tr><th>Source</th><th>Last change (git)</th><th></th></tr>
-<tr><td>CLAUDE.md · STATE.md · TASKS.md · PROJECT.md</td><td>2026-10-06</td><td><span class="dot g"></span></td></tr>
-<tr><td>DECISIONS.md · README.md</td><td>2026-09-22</td><td><span class="dot g"></span></td></tr>
+<tr><td>CLAUDE.md · STATE.md · TASKS.md · README.md</td><td>2026-10-17</td><td><span class="dot g"></span></td></tr>
+<tr><td>PROJECT.md</td><td>2026-10-06</td><td><span class="dot g"></span></td></tr>
+<tr><td>DECISIONS.md</td><td>2026-09-22</td><td><span class="dot g"></span></td></tr>
 <tr><td>PLAN.md · AGENTS.md</td><td>2026-09-21</td><td><span class="dot g"></span></td></tr></table>
-<p>Newest committed source 11 days old (green). CLAUDE.md and README.md have uncommitted edits today.</p>
+<p>Newest source 0 days old (green).</p>
 <div class="src">Source: git log -1 --format=%cs, git status</div></section>
 </main>
 <footer>Generated 2026-10-17 · derived from PROJECT.md, PLAN.md, STATE.md, TASKS.md, DECISIONS.md, CLAUDE.md, README.md, AGENTS.md, status-2026-10-06.html, diary-2026-10.md, AI+PROCESS.html, git log/diff, ls themes/ posters/ scripts/, curl worldcities.pages.dev.<br>
