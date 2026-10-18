@@ -8,6 +8,10 @@ worldcities = map posters + trip sites.
 
 - **Posters:** a clone of originalankur/maptoposter, customized for personal use. Run occasionally to generate a custom map poster. Still supported.
 - **Trip sites:** `tripsite/` builds a static, shareable website for a trip (map, places, events) from a trip profile in gitignored `trips/`. Hosted on Cloudflare Pages at worldcities.ca.
+  - Deploys are manual `wrangler pages deploy` uploads — no Git auto-deploy.
+  - `worldcities.pages.dev` only redirects (301) to worldcities.ca.
+  - `www.worldcities.ca` has no DNS record.
+  - Domain expires 2026-12-02 — auto-renew not yet confirmed (Rob to check registrar).
 
 No productization plans.
 
