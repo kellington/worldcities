@@ -113,6 +113,8 @@ worldcities-specific rules in CLAUDE.md. The cutover gate cards were removed 202
   `2fbaf12`; refreshed again in the unattended run to reflect that commit.
 - Second unattended refresh: HANDOFFS.md read — no open handoffs to worldcities. Status page
   touched (handoff note only); nothing else changed.
+- Third unattended refresh: still no open handoffs; sources unchanged since `a229473`. Status page
+  note bumped only.
 
 ## Resolved 2026-10-06
 
