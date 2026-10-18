@@ -15,6 +15,8 @@
 - [ ] **Decide `www`** (was Gate 0f). Recommendation: redirect to apex. Never CNAME it to the
       Pages project. No wildcard — it would shadow `retired-world.worldcities.ca`.
 - [ ] **Close the milestone** once Lucie's login passes — rewrite PLAN.md.
+- [ ] **Commit this session's docs** (CLAUDE.md, STATE, TASKS, status page, STATUS-SUMMARY,
+      diary) — stage explicit paths; leave README.md out until Rob rules on its trip link.
 
 ## Later
 
@@ -37,10 +39,12 @@
 - [ ] Narrow the bypass-mode instruction that tells agents to edit files via `sed`/heredocs.
       Gage declined it twice: routing writes through Bash bypasses his guard hook's
       protected-file check, which would matter on a job where the target *was* a protocol file.
-- [ ] Renew `worldcities.ca` — registry expiry **2026-12-02**.
+- [ ] Renew `worldcities.ca` — registry expiry **2026-12-02**. Rob: confirm auto-renew at the registrar.
 - [ ] Consider SPF/DKIM/DMARC on `worldcities.ca` if Rob ever sends from that address.
 
 ## Done (recent)
+
+- [x] H-20261016-11: hosting/deploy facts in CLAUDE.md; status page 2026-10-17 (2026-10-17, uncommitted)
 
 - [x] Docs reference `retired-world.worldcities.ca` (shared zone rule); status page 2026-10-06 (2026-10-06)
 - [x] **Gate 0e 24-hour re-test PASS** — 19:28 MDT, 2 hops Gmail → Zoho, Quincy-verified (2026-09-22)

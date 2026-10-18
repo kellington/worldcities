@@ -1,6 +1,6 @@
 # State
 
-*Last updated: 2026-10-06 (docs/status session; no deploy or DNS work)*
+*Last updated: 2026-10-17 (handoff + status session; no deploy or DNS work)*
 
 ## Summary
 
@@ -56,7 +56,12 @@ DECISIONS.md, 2026-09-22). The re-test **passed** at 19:28 MDT (Quincy-verified)
 
 - **Defect 6 (Gate 4 accepted a 404 pre-upload)** — fixed in the new generic deploy guide
   (302-only before upload) and in CLAUDE.md's rules.
-- **`www.worldcities.ca` is dark** until the `www` decision. Must never CNAME to the Pages project —
+- **README.md has an uncommitted "Prototype" link** to the live trip URL at the top (not added
+  by an agent). It puts the slug on the public repo's front page, against PROJECT's "nothing
+  reveals a trip slug" criterion (the slug is already in tracked docs/history; Access is the
+  real lock). Rob to drop it or accept it before README.md is committed.
+- **Domain auto-renew unconfirmed** — `worldcities.ca` expires 2026-12-02 and carries live mail.
+- **`www.worldcities.ca` is dark** (no DNS record) until the `www` decision. Must never CNAME to the Pages project —
   Access covers `worldcities.ca` only.
 - **"Enable access policy" is still absent** from Pages › Settings after Zero Trust
   onboarding. Hypothesis ruled out; Gate 3b's redirect covers those hostnames regardless.
@@ -96,9 +101,17 @@ worldcities-specific rules in CLAUDE.md. The cutover gate cards were removed 202
   Gate 5 — which has now passed, so it is revisitable. Low priority; 3b covers it.
 - **When to delete the Route 53 hosted zone** (Gate 0g) — eligible since ~2026-10-05 (two weeks
   of stable mail on Cloudflare). It is the rollback; Rob's call (questions_for_rob).
-- **Lucie's login** — still unconfirmed as of 2026-10-06. Trip freeze starts 2026-10-23.
+- **Lucie's login** — still unconfirmed as of 2026-10-17. Trip freeze starts 2026-10-23 (6 days);
+  PLAN's "re-plan if not finished by ~2026-10-16" line has passed.
 
-## Resolved this session (2026-10-06)
+## Resolved this session (2026-10-17)
+
+- H-20261016-11: CLAUDE.md now states hosting/deploy facts — manual `wrangler pages deploy`
+  uploads (no Git auto-deploy), `worldcities.pages.dev` 301-only (re-checked today), no `www`
+  record, expiry 2026-12-02 with auto-renew unconfirmed. **Uncommitted.**
+- `/project-status`: `project/status/status-2026-10-17.html` + STATUS-SUMMARY refresh. **Uncommitted.**
+
+## Resolved 2026-10-06
 
 - Docs note `retired-world.worldcities.ca` shares the zone (CLAUDE.md rule, PROJECT, STATE, TASKS).
 - First global `/project-status` run: `project/status/status-2026-10-06.html` + STATUS-SUMMARY
