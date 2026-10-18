@@ -14,9 +14,8 @@
       targets. Never done on hardware, and the page will be used on phones in Mexico City.
 - [ ] **Decide `www`** (was Gate 0f). Recommendation: redirect to apex. Never CNAME it to the
       Pages project. No wildcard — it would shadow `retired-world.worldcities.ca`.
-- [ ] **Close the milestone** once Lucie's login passes — rewrite PLAN.md.
-- [ ] **Commit this session's docs** (CLAUDE.md, STATE, TASKS, status page, STATUS-SUMMARY,
-      diary) — stage explicit paths; leave README.md out until Rob rules on its trip link.
+- [ ] **Close the milestone** once Lucie's login passes — rewrite PLAN.md; reword PROJECT's
+      "nothing reveals a trip slug" criterion (README now links the trip URL).
 
 ## Later
 
@@ -44,7 +43,7 @@
 
 ## Done (recent)
 
-- [x] H-20261016-11: hosting/deploy facts in CLAUDE.md; status page 2026-10-17 (2026-10-17, uncommitted)
+- [x] H-20261016-11: hosting/deploy facts in CLAUDE.md; status page 2026-10-17 (2026-10-17, `2fbaf12`)
 
 - [x] Docs reference `retired-world.worldcities.ca` (shared zone rule); status page 2026-10-06 (2026-10-06)
 - [x] **Gate 0e 24-hour re-test PASS** — 19:28 MDT, 2 hops Gmail → Zoho, Quincy-verified (2026-09-22)

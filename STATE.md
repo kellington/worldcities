@@ -56,10 +56,10 @@ DECISIONS.md, 2026-09-22). The re-test **passed** at 19:28 MDT (Quincy-verified)
 
 - **Defect 6 (Gate 4 accepted a 404 pre-upload)** — fixed in the new generic deploy guide
   (302-only before upload) and in CLAUDE.md's rules.
-- **README.md has an uncommitted "Prototype" link** to the live trip URL at the top (not added
-  by an agent). It puts the slug on the public repo's front page, against PROJECT's "nothing
-  reveals a trip slug" criterion (the slug is already in tracked docs/history; Access is the
-  real lock). Rob to drop it or accept it before README.md is committed.
+- **README.md "Prototype" link** to the live trip URL at the top — Rob committed it in
+  `2fbaf12` (2026-10-17), so treated as accepted. It puts the slug on the public repo's front
+  page, against PROJECT's "nothing reveals a trip slug" criterion (slug already in tracked
+  docs/history; Access is the real lock). Reword that criterion at milestone close.
 - **Domain auto-renew unconfirmed** — `worldcities.ca` expires 2026-12-02 and carries live mail.
 - **`www.worldcities.ca` is dark** (no DNS record) until the `www` decision. Must never CNAME to the Pages project —
   Access covers `worldcities.ca` only.
@@ -108,8 +108,13 @@ worldcities-specific rules in CLAUDE.md. The cutover gate cards were removed 202
 
 - H-20261016-11: CLAUDE.md now states hosting/deploy facts — manual `wrangler pages deploy`
   uploads (no Git auto-deploy), `worldcities.pages.dev` 301-only (re-checked today), no `www`
-  record, expiry 2026-12-02 with auto-renew unconfirmed. **Uncommitted.**
-- `/project-status`: `project/status/status-2026-10-17.html` + STATUS-SUMMARY refresh. **Uncommitted.**
+  record, expiry 2026-12-02 with auto-renew unconfirmed. Committed `2fbaf12`.
+- `/project-status`: `project/status/status-2026-10-17.html` + STATUS-SUMMARY refresh. Committed
+  `2fbaf12`; refreshed again in the unattended run to reflect that commit.
+- Second unattended refresh: HANDOFFS.md read — no open handoffs to worldcities. Status page
+  touched (handoff note only); nothing else changed.
+- Third unattended refresh: still no open handoffs; sources unchanged since `a229473`. Status page
+  note bumped only.
 
 ## Resolved 2026-10-06
 
